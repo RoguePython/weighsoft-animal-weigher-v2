@@ -1,0 +1,558 @@
+---
+globs:
+alwaysApply: true
+---
+
+# Data Verification & System Checks
+
+## Golden Rule: Never Assume, Always Verify
+
+**Before generating code or making changes, VERIFY the actual state of the system.**
+
+Don't hallucinate file structures, database schemas, or component names. Check what actually exists.
+
+---
+
+## Why This Matters
+
+### The Problem
+AI assistants can:
+- ❌ Assume files exist that don't
+- ❌ Reference wrong database table names
+- ❌ Use outdated component names
+- ❌ Guess at folder structures
+- ❌ Import from non-existent modules
+
+### The Solution
+✅ **Use tools to verify** before writing code  
+✅ **Check the system** before assuming  
+✅ **Read actual files** instead of guessing  
+✅ **List directories** to confirm structure
+
+---
+
+## When to Verify
+
+### 1. Before Creating Files
+
+❌ **Bad: Assume structure**
+```typescript
+// Just writing to assumed location
+import { Animal } from '@/domain/entities/animal';
+```
+
+✅ **Good: Check first**
+```bash
+# Use list_dir tool to check if domain/entities/ exists
+# Use glob_file_search to find existing entity files
+# Then create new file in correct location
+```
+
+---
+
+### 2. Before Referencing Database Tables
+
+❌ **Bad: Assume schema**
+```typescript
+await db.runAsync('SELECT * FROM animals WHERE id = ?', [id]);
+// What if the table is called 'entities' not 'animals'?
+```
+
+✅ **Good: Verify schema**
+```bash
+# Read docs/architecture/data-model.md
+# Check actual migration files
+# Use correct table name from documentation
+```
+
+---
+
+### 3. Before Importing Components
+
+❌ **Bad: Guess component name**
+```typescript
+import { SearchDropdown } from '@/presentation/components/search-dropdown';
+// What if it's called SearchableSelect?
+```
+
+✅ **Good: Check what exists**
+```bash
+# Use list_dir on src/presentation/components/
+# Use grep to search for component exports
+# Import correct component name
+```
+
+---
+
+### 4. Before Modifying Existing Code
+
+❌ **Bad: Assume implementation**
+```typescript
+// Assuming function signature
+updateAnimal(id, data);
+```
+
+✅ **Good: Read existing code**
+```bash
+# Use read_file to check actual function signature
+# Verify parameter types
+# Match existing patterns
+```
+
+---
+
+## Verification Checklist
+
+### Before Every Code Generation Task
+
+- [ ] **Check folder structure**
+  ```
+  Use list_dir to verify directories exist
+  ```
+
+- [ ] **Verify file existence**
+  ```
+  Use glob_file_search to find related files
+  ```
+
+- [ ] **Read relevant documentation**
+  ```
+  Check docs/ for schema, APIs, patterns
+  ```
+
+- [ ] **Confirm database schema**
+  ```
+  Read docs/architecture/data-model.md
+  Check migration files
+  ```
+
+- [ ] **Verify component names**
+  ```
+  List components directory
+  Grep for exports
+  ```
+
+- [ ] **Check import paths**
+  ```
+  Verify path aliases in tsconfig
+  Confirm module exists
+  ```
+
+---
+
+## Verification Tools & Usage
+
+### Tool 1: `list_dir`
+**Purpose**: Check what files/folders actually exist
+
+**When to use**:
+- Before creating new files
+- Before referencing a folder path
+- To understand project structure
+
+**Example**:
+```bash
+# Check if components folder exists
+list_dir("src/presentation/components/")
+
+# Check if migrations exist
+list_dir("src/infrastructure/database/migrations/")
+```
+
+---
+
+### Tool 2: `glob_file_search`
+**Purpose**: Find files by pattern
+
+**When to use**:
+- Find all components
+- Find all test files
+- Locate specific file types
+
+**Example**:
+```bash
+# Find all entity files
+glob_file_search("**/entities/*.ts")
+
+# Find all test files
+glob_file_search("**/*.test.ts")
+```
+
+---
+
+### Tool 3: `read_file`
+**Purpose**: Read actual file contents
+
+**When to use**:
+- Before modifying existing code
+- To understand current implementation
+- To verify function signatures
+
+**Example**:
+```bash
+# Read actual entity definition
+read_file("src/domain/entities/animal.ts")
+
+# Read database schema
+read_file("docs/architecture/data-model.md")
+```
+
+---
+
+### Tool 4: `grep`
+**Purpose**: Search for specific code patterns
+
+**When to use**:
+- Find where a function is used
+- Locate component exports
+- Check for existing implementations
+
+**Example**:
+```bash
+# Find all usages of Animal entity
+grep("Animal", path="src/")
+
+# Find component exports
+grep("export.*Component", path="src/presentation/components/")
+```
+
+---
+
+### Tool 5: `codebase_search`
+**Purpose**: Semantic search for understanding
+
+**When to use**:
+- Understand how a feature works
+- Find related code by meaning
+- Locate business logic
+
+**Example**:
+```bash
+# Find weight calculation logic
+codebase_search("How is animal weight calculated?")
+
+# Find validation logic
+codebase_search("Where are entities validated?")
+```
+
+---
+
+## Real-World Examples
+
+### Example 1: Adding a New Feature
+
+**Task**: Add weight loss detection
+
+❌ **Bad Approach (Assuming)**:
+```typescript
+// Just writing code without checking
+import { WeightRecord } from '@/domain/entities/weight-record';
+import { detectWeightLoss } from '@/domain/usecases/detect-weight-loss';
+
+export class WeightService {
+  async checkForAnomalies(animalId: string) {
+    // Assuming these exist
+  }
+}
+```
+
+✅ **Good Approach (Verifying)**:
+```bash
+# Step 1: Check what entities exist
+list_dir("src/domain/entities/")
+
+# Step 2: Check if use case exists
+glob_file_search("**/usecases/*.ts")
+
+# Step 3: Read actual entity to understand structure
+read_file("src/domain/entities/transaction.ts")  # Found it's Transaction not WeightRecord!
+
+# Step 4: Check docs for business rules
+read_file("docs/architecture/decisions/005-mvp-simplifications.md")
+
+# Now write code with correct names and structure
+```
+
+---
+
+### Example 2: Fixing a Bug
+
+**Task**: Fix duplicate RFID in batch
+
+❌ **Bad Approach (Guessing)**:
+```typescript
+// Assuming table structure
+const existing = await db.runAsync(
+  'SELECT * FROM weight_records WHERE rfid = ?',
+  [rfid]
+);
+```
+
+✅ **Good Approach (Checking)**:
+```bash
+# Step 1: Verify actual database schema
+read_file("docs/architecture/data-model.md")
+# Found: RFID is on Entity table, not transaction!
+
+# Step 2: Read actual transaction table structure
+# Found: Transactions link to entity_id, and entity has rfid_tag
+
+# Step 3: Check existing duplicate detection logic
+grep("duplicate.*rfid", path="src/")
+
+# Now write correct query:
+```
+```typescript
+const existing = await db.runAsync(`
+  SELECT t.* FROM transactions t
+  JOIN entities e ON t.entity_id = e.entity_id
+  WHERE e.rfid_tag = ? AND t.batch_id = ?
+`, [rfid, batchId]);
+```
+
+---
+
+### Example 3: Creating a Component
+
+**Task**: Create searchable dropdown
+
+❌ **Bad Approach (Assuming)**:
+```typescript
+// Creating without checking existing patterns
+export const SearchDropdown = () => {
+  // Random implementation
+};
+```
+
+✅ **Good Approach (Verifying)**:
+```bash
+# Step 1: Check if component already exists
+grep("SearchableSelect", path="src/presentation/components/")
+
+# Step 2: Check component library spec
+read_file("docs/setup/COMPONENT-LIBRARY.md")
+# Found: It's called SearchableSelect, not SearchDropdown!
+
+# Step 3: Check existing components for patterns
+list_dir("src/presentation/components/")
+read_file("src/presentation/components/button.tsx")
+# Found: Use testID, theme, TypeScript interfaces
+
+# Step 4: Check theme system
+read_file("docs/design/theme-colors.md")
+
+# Now create component following actual patterns
+```
+
+---
+
+## Common Verification Mistakes
+
+### Mistake 1: Trusting Memory
+
+❌ **Bad**:
+```
+"I remember the user said table is called 'animals'"
+→ Writes code using 'animals' table
+```
+
+✅ **Good**:
+```
+1. Read docs/architecture/data-model.md
+2. Confirm actual table name is 'entities'
+3. Write code using correct name
+```
+
+---
+
+### Mistake 2: Assuming File Exists
+
+❌ **Bad**:
+```
+"User probably has a config file"
+→ Imports from @/config/database
+→ Breaks because file doesn't exist
+```
+
+✅ **Good**:
+```
+1. Use list_dir("src/config/")
+2. Check if config/ folder exists
+3. If not, create it or adjust approach
+```
+
+---
+
+### Mistake 3: Guessing Patterns
+
+❌ **Bad**:
+```
+"Most React Native apps use AsyncStorage"
+→ Writes code using AsyncStorage
+→ Wrong! This app uses SQLite
+```
+
+✅ **Good**:
+```
+1. Check .cursor/rules/05-database-sqlite.mdc
+2. Read docs/PROJECT-BRIEF.md
+3. Confirm SQLite is used
+4. Write code accordingly
+```
+
+---
+
+## Verification Best Practices
+
+### 1. Start Every Task with Verification
+
+**Before**:
+```
+User: "Add a weight history screen"
+AI: *immediately starts writing code*
+```
+
+**After**:
+```
+User: "Add a weight history screen"
+AI: "Let me verify the current structure first..."
+
+1. list_dir("src/presentation/screens/")
+2. read_file("docs/architecture/data-model.md")
+3. grep("WeightHistory", path="src/")
+4. *Now* write code with confidence
+```
+
+---
+
+### 2. Document What You Verified
+
+**In comments**:
+```typescript
+// Verified: Entity table has entity_id (not animal_id)
+// Source: docs/architecture/data-model.md, line 45
+const query = 'SELECT * FROM entities WHERE entity_id = ?';
+```
+
+---
+
+### 3. When in Doubt, Ask User
+
+**If verification is unclear**:
+```
+AI: "I see two possible approaches:
+1. Transaction table (from data-model.md)
+2. WeightRecord table (mentioned in todo.md)
+
+Which table should I use for weight history?"
+```
+
+---
+
+## Integration with Other Rules
+
+### Works with Rule 01 (Project Overview)
+```
+Rule 01: "ALWAYS start with todo.md"
+Rule 34: "Verify todo.md exists, then read it"
+```
+
+### Works with Rule 11 (AI Assistant)
+```
+Rule 11: "Check existing patterns"
+Rule 34: "Use grep/codebase_search to find patterns"
+```
+
+### Works with Rule 02 (Clean Architecture)
+```
+Rule 02: "Domain layer has no external dependencies"
+Rule 34: "Verify by reading actual domain files"
+```
+
+---
+
+## Quick Reference Card
+
+### Before Writing Any Code:
+
+```bash
+# 1. Check structure
+list_dir("src/")
+
+# 2. Read docs
+read_file("docs/architecture/data-model.md")
+read_file("docs/PROJECT-BRIEF.md")
+
+# 3. Search for related code
+grep("<relevant-term>", path="src/")
+
+# 4. Understand existing patterns
+codebase_search("How does <feature> work?")
+
+# 5. NOW write code confidently
+```
+
+---
+
+## Success Metrics
+
+### Before Rule 34 (Problems):
+- ❌ 30% of generated code had wrong imports
+- ❌ 20% referenced non-existent files
+- ❌ 15% used wrong database table names
+- ❌ 10% broke builds due to incorrect assumptions
+
+### After Rule 34 (Goals):
+- ✅ <5% wrong imports (verify before importing)
+- ✅ <2% file reference errors (use list_dir)
+- ✅ 0% wrong table names (read data-model.md)
+- ✅ 0% build breaks from assumptions (verify first)
+
+---
+
+## Error Recovery
+
+### If You Realize You Assumed Wrong
+
+**1. Acknowledge**:
+```
+"I apologize - I assumed the table was 'animals' without verifying.
+Let me check the actual schema..."
+```
+
+**2. Verify**:
+```bash
+read_file("docs/architecture/data-model.md")
+```
+
+**3. Correct**:
+```
+"I've now verified the table is called 'entities'. 
+Here's the corrected code..."
+```
+
+---
+
+## Summary
+
+### The Core Principle
+
+> **"Never assume. Always verify."**
+
+### The Three Questions
+
+Before writing code, ask:
+1. **Does this file/folder exist?** → Use `list_dir`
+2. **What's the actual name/structure?** → Use `read_file`
+3. **How is this done elsewhere?** → Use `grep` / `codebase_search`
+
+### The Result
+
+- ✅ Accurate code generation
+- ✅ Fewer bugs from assumptions
+- ✅ Better alignment with existing code
+- ✅ Faster development (less refactoring)
+
+---
+
+*Trust the system, not your assumptions.* 🔍

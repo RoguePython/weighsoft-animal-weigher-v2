@@ -1,0 +1,356 @@
+---
+globs:
+  - "src/**/*"
+alwaysApply: false
+---
+
+# Platform-Specific Code (Android + Web)
+
+## Platform Detection
+
+### Check Platform at Runtime
+```typescript
+import { Platform } from 'react-native';
+
+// Simple platform check
+if (Platform.OS === 'web') {
+  // Web-specific code
+}
+
+if (Platform.OS === 'android') {
+  // Android-specific code
+}
+
+// Platform.select for values
+const padding = Platform.select({
+  web: 20,
+  android: 16,
+  default: 16,
+});
+
+const styles = StyleSheet.create({
+  container: {
+    padding: Platform.select({
+      web: 20,
+      android: 16,
+    }),
+  },
+});
+```
+
+## File Extensions for Platform-Specific Code
+
+### Platform-Specific Files
+```
+src/components/
+├── Button.tsx              # Shared code
+├── Button.web.tsx          # Web-only implementation
+└── Button.android.tsx      # Android-only implementation
+
+// React Native automatically picks the right file:
+import { Button } from './Button';  // Loads Button.web.tsx on web
+```
+
+### When to Use Platform-Specific Files
+```typescript
+// ✅ GOOD: Platform file for major differences
+// Button.web.tsx
+export const Button: React.FC<Props> = ({ onPress, children }) => {
+  return (
+    <button onClick={onPress} className="custom-button">
+      {children}
+    </button>
+  );
+};
+
+// Button.android.tsx
+export const Button: React.FC<Props> = ({ onPress, children }) => {
+  return (
+    <TouchableOpacity onPress={onPress} style={styles.button}>
+      <Text>{children}</Text>
+    </TouchableOpacity>
+  );
+};
+
+// ❌ BAD: Platform file for minor differences
+// Use Platform.select instead
+```
+
+## Web-Specific Considerations
+
+### DOM Access
+```typescript
+// ✅ GOOD: Check platform before DOM access
+if (Platform.OS === 'web') {
+  document.title = 'Animal Weigher';
+  window.addEventListener('resize', handleResize);
+}
+
+// ✅ GOOD: Use react-native-web compatible APIs
+import { Dimensions } from 'react-native';
+const { width } = Dimensions.get('window');
+```
+
+### Web Routing
+```typescript
+// For web, use react-router or react-navigation
+// src/presentation/navigation/navigation.web.tsx
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+
+export const WebNavigation = () => (
+  <BrowserRouter>
+    <Routes>
+      <Route path="/" element={<HomeScreen />} />
+      <Route path="/animals" element={<AnimalListScreen />} />
+      <Route path="/animals/:id" element={<AnimalDetailScreen />} />
+    </Routes>
+  </BrowserRouter>
+);
+
+// src/presentation/navigation/navigation.android.tsx
+import { NavigationContainer } from '@react-navigation/native';
+
+export const MobileNavigation = () => (
+  <NavigationContainer>
+    <Stack.Navigator>
+      <Stack.Screen name="Home" component={HomeScreen} />
+    </Stack.Navigator>
+  </NavigationContainer>
+);
+```
+
+### SEO for Web
+```typescript
+// src/shared/utils/seo.web.ts
+export function setPageMeta(title: string, description: string): void {
+  if (Platform.OS !== 'web') return;
+  
+  document.title = title;
+  
+  const metaDescription = document.querySelector('meta[name="description"]');
+  if (metaDescription) {
+    metaDescription.setAttribute('content', description);
+  }
+}
+```
+
+## Android-Specific Considerations
+
+### Back Button Handling
+```typescript
+import { BackHandler } from 'react-native';
+
+useEffect(() => {
+  if (Platform.OS !== 'android') return;
+  
+  const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+    if (canGoBack) {
+      navigation.goBack();
+      return true;  // Prevent default
+    }
+    return false;  // Allow default (exit app)
+  });
+  
+  return () => backHandler.remove();
+}, [canGoBack]);
+```
+
+### Permissions (Android-specific)
+```typescript
+import { PermissionsAndroid, Platform } from 'react-native';
+
+async function requestCameraPermission(): Promise<boolean> {
+  if (Platform.OS === 'web') {
+    // Web uses browser permissions
+    return true;
+  }
+  
+  if (Platform.OS === 'android') {
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.CAMERA
+    );
+    return granted === PermissionsAndroid.RESULTS.GRANTED;
+  }
+  
+  return false;
+}
+```
+
+## Storage Strategy by Platform
+
+### Database Choice
+```typescript
+// src/infrastructure/storage/storage-factory.ts
+import { Platform } from 'react-native';
+
+export function createStorageAdapter(): IStorageAdapter {
+  if (Platform.OS === 'web') {
+    // Use IndexedDB for web
+    return new IndexedDBAdapter();
+  }
+  
+  // Use SQLite for mobile
+  return new SQLiteAdapter();
+}
+```
+
+### IndexedDB for Web
+```typescript
+// src/data/datasources/indexeddb-datasource.web.ts
+export class IndexedDBDataSource implements IAnimalDataSource {
+  private db: IDBDatabase | null = null;
+
+  async initialize(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('WeighsoftDB', 1);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve();
+      };
+      
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        
+        if (!db.objectStoreNames.contains('animals')) {
+          const store = db.createObjectStore('animals', { keyPath: 'id' });
+          store.createIndex('species', 'species', { unique: false });
+        }
+      };
+    });
+  }
+
+  async getAll(): Promise<Animal[]> {
+    // IndexedDB implementation
+  }
+}
+```
+
+## Responsive Design
+
+### Breakpoints
+```typescript
+// src/shared/constants/breakpoints.ts
+import { Dimensions } from 'react-native';
+
+export const BREAKPOINTS = {
+  mobile: 0,
+  tablet: 768,
+  desktop: 1024,
+  wide: 1440,
+} as const;
+
+export function useBreakpoint() {
+  const { width } = Dimensions.get('window');
+  
+  if (width >= BREAKPOINTS.wide) return 'wide';
+  if (width >= BREAKPOINTS.desktop) return 'desktop';
+  if (width >= BREAKPOINTS.tablet) return 'tablet';
+  return 'mobile';
+}
+
+// Usage
+const breakpoint = useBreakpoint();
+const columns = breakpoint === 'mobile' ? 1 : breakpoint === 'tablet' ? 2 : 3;
+```
+
+### Responsive Styles
+```typescript
+// Mobile-first approach
+const styles = StyleSheet.create({
+  container: {
+    padding: 16,
+    // Mobile default
+    flexDirection: 'column',
+  },
+  containerTablet: {
+    // Tablet override
+    flexDirection: 'row',
+    padding: 24,
+  },
+  containerDesktop: {
+    // Desktop override
+    maxWidth: 1200,
+    marginHorizontal: 'auto',
+  },
+});
+
+// Apply conditionally
+<View style={[
+  styles.container,
+  breakpoint === 'tablet' && styles.containerTablet,
+  breakpoint === 'desktop' && styles.containerDesktop,
+]}>
+```
+
+## Build Configuration
+
+### Separate Builds
+```json
+// package.json
+{
+  "scripts": {
+    "android": "react-native run-android",
+    "android:build": "cd android && ./gradlew assembleRelease",
+    
+    "web": "react-scripts start",
+    "web:build": "react-scripts build",
+    
+    "build:all": "npm run android:build && npm run web:build"
+  }
+}
+```
+
+### Environment Variables by Platform
+```typescript
+// config.ts
+export const config = {
+  apiUrl: Platform.select({
+    web: process.env.REACT_APP_API_URL,
+    android: process.env.API_URL,
+  }),
+  
+  storage: Platform.select({
+    web: 'indexeddb',
+    android: 'sqlite',
+  }),
+};
+```
+
+## Testing by Platform
+
+### Platform-Specific Tests
+```typescript
+// __tests__/button.web.test.tsx
+describe('Button (Web)', () => {
+  it('should render as HTML button', () => {
+    const { container } = render(<Button title="Click" />);
+    expect(container.querySelector('button')).toBeInTheDocument();
+  });
+});
+
+// __tests__/button.android.test.tsx
+describe('Button (Android)', () => {
+  it('should render as TouchableOpacity', () => {
+    const { getByTestId } = render(<Button title="Click" testID="btn" />);
+    expect(getByTestID('btn').type).toBe('TouchableOpacity');
+  });
+});
+```
+
+## Best Practices
+
+### DO
+- ✅ Use Platform.select for simple differences
+- ✅ Use .web.tsx / .android.tsx for major differences
+- ✅ Test on both platforms regularly
+- ✅ Use responsive design for web
+- ✅ Handle platform-specific permissions gracefully
+
+### DON'T
+- ❌ Assume mobile-only behavior on web
+- ❌ Use platform-specific APIs without checks
+- ❌ Forget to handle browser back button on web
+- ❌ Ignore responsive design on web
+- ❌ Use fixed dimensions that don't scale

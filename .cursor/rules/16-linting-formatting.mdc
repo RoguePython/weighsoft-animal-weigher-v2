@@ -1,0 +1,338 @@
+---
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.js"
+  - ".eslintrc*"
+  - ".prettierrc*"
+alwaysApply: false
+---
+
+# Linting & Formatting Rules
+
+## ESLint Configuration
+
+### Base Configuration
+```javascript
+// .eslintrc.js
+module.exports = {
+  root: true,
+  extends: [
+    'eslint:recommended',
+    '@react-native',
+    'plugin:@typescript-eslint/recommended',
+    'plugin:@typescript-eslint/recommended-requiring-type-checking',
+    'plugin:react/recommended',
+    'plugin:react-hooks/recommended',
+    'prettier', // Must be last to override other configs
+  ],
+  parser: '@typescript-eslint/parser',
+  parserOptions: {
+    ecmaFeatures: { jsx: true },
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+    project: './tsconfig.json',
+  },
+  plugins: [
+    '@typescript-eslint',
+    'react',
+    'react-hooks',
+    'import',
+  ],
+  rules: {
+    // TypeScript
+    '@typescript-eslint/no-explicit-any': 'error',
+    '@typescript-eslint/explicit-function-return-type': 'warn',
+    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    '@typescript-eslint/no-floating-promises': 'error',
+    '@typescript-eslint/await-thenable': 'error',
+    '@typescript-eslint/no-misused-promises': 'error',
+    '@typescript-eslint/strict-boolean-expressions': 'warn',
+
+    // React
+    'react/react-in-jsx-scope': 'off',
+    'react/prop-types': 'off',
+    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
+
+    // Import ordering
+    'import/order': ['error', {
+      'groups': [
+        'builtin',
+        'external',
+        'internal',
+        ['parent', 'sibling'],
+        'index',
+      ],
+      'pathGroups': [
+        { pattern: 'react', group: 'builtin', position: 'before' },
+        { pattern: 'react-native', group: 'builtin', position: 'before' },
+        { pattern: '@/**', group: 'internal', position: 'before' },
+      ],
+      'pathGroupsExcludedImportTypes': ['react', 'react-native'],
+      'newlines-between': 'always',
+      'alphabetize': { order: 'asc', caseInsensitive: true },
+    }],
+
+    // General
+    'no-console': ['warn', { allow: ['warn', 'error'] }],
+    'no-debugger': 'error',
+    'prefer-const': 'error',
+    'no-var': 'error',
+    'eqeqeq': ['error', 'always'],
+  },
+  settings: {
+    react: { version: 'detect' },
+  },
+  ignorePatterns: [
+    'node_modules/',
+    'android/',
+    'ios/',
+    '*.config.js',
+    'babel.config.js',
+    'metro.config.js',
+  ],
+};
+```
+
+## Prettier Configuration
+
+### Prettier Config
+```json
+// .prettierrc
+{
+  "semi": true,
+  "trailingComma": "es5",
+  "singleQuote": true,
+  "printWidth": 100,
+  "tabWidth": 2,
+  "useTabs": false,
+  "bracketSpacing": true,
+  "bracketSameLine": false,
+  "arrowParens": "avoid",
+  "endOfLine": "lf"
+}
+```
+
+### Prettier Ignore
+```gitignore
+# .prettierignore
+node_modules/
+android/
+ios/
+*.lock
+*.md
+```
+
+## TypeScript Configuration
+
+### Strict TypeScript
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "jsx": "react-native",
+    
+    // Strict checks - ALL ENABLED
+    "strict": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noPropertyAccessFromIndexSignature": true,
+    
+    // Module resolution
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    
+    // Path aliases
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@domain/*": ["src/domain/*"],
+      "@data/*": ["src/data/*"],
+      "@presentation/*": ["src/presentation/*"],
+      "@infrastructure/*": ["src/infrastructure/*"],
+      "@shared/*": ["src/shared/*"],
+      "@test/*": ["test/*"]
+    },
+    
+    // Output
+    "outDir": "./dist",
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "android", "ios"]
+}
+```
+
+## Pre-Commit Hooks
+
+### Husky Setup
+```json
+// package.json
+{
+  "scripts": {
+    "lint": "eslint src test --ext .ts,.tsx",
+    "lint:fix": "eslint src test --ext .ts,.tsx --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"test/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
+    "typecheck": "tsc --noEmit",
+    "validate": "npm run typecheck && npm run lint && npm run format:check"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  }
+}
+```
+
+### Husky Pre-Commit Hook
+```bash
+#!/bin/sh
+# .husky/pre-commit
+
+npx lint-staged
+npm run typecheck
+```
+
+## VS Code / Cursor Settings
+
+### Workspace Settings
+```json
+// .vscode/settings.json
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true,
+    "source.organizeImports": false
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}
+```
+
+### Recommended Extensions
+```json
+// .vscode/extensions.json
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "ms-vscode.vscode-typescript-next",
+    "bradlc.vscode-tailwindcss",
+    "streetsidesoftware.code-spell-checker"
+  ]
+}
+```
+
+## Common ESLint Rules Explained
+
+### Must Fix (Errors)
+```typescript
+// ❌ @typescript-eslint/no-explicit-any
+const data: any = fetchData();  // Error!
+
+// ✅ Fix: Use proper types
+const data: AnimalData = fetchData();
+
+
+// ❌ @typescript-eslint/no-floating-promises
+async function load() {
+  fetchData();  // Error: Promise not handled!
+}
+
+// ✅ Fix: Await or handle
+async function load() {
+  await fetchData();
+}
+
+
+// ❌ react-hooks/rules-of-hooks
+if (condition) {
+  const [state, setState] = useState();  // Error!
+}
+
+// ✅ Fix: Hooks at top level only
+const [state, setState] = useState();
+if (condition) {
+  // use state here
+}
+```
+
+### Should Fix (Warnings)
+```typescript
+// ⚠️ @typescript-eslint/explicit-function-return-type
+function calculate(x) {  // Warning: missing return type
+  return x * 2;
+}
+
+// ✅ Fix: Add return type
+function calculate(x: number): number {
+  return x * 2;
+}
+
+
+// ⚠️ no-console
+console.log('debug');  // Warning in production code
+
+// ✅ Fix: Use logger
+logger.debug('debug');
+```
+
+## Running Linting
+
+### Commands
+```bash
+# Check for lint errors
+npm run lint
+
+# Auto-fix lint errors
+npm run lint:fix
+
+# Check formatting
+npm run format:check
+
+# Fix formatting
+npm run format
+
+# Full validation (before commit)
+npm run validate
+```
+
+### CI/CD Integration
+```yaml
+# .github/workflows/lint.yml
+name: Lint
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: npm ci
+      - run: npm run validate
+```

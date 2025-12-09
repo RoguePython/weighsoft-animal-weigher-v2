@@ -1,0 +1,337 @@
+---
+globs:
+  - "src/**/*"
+alwaysApply: false
+---
+
+# Logging Standards
+
+## Logging Philosophy
+- Logs are for **debugging and monitoring**, not for users
+- Log **enough to diagnose issues**, not everything
+- **Never log sensitive data** (passwords, tokens, PII)
+- Different log levels for different purposes
+
+## Logger Implementation
+
+### Centralized Logger
+```typescript
+// src/shared/utils/logger.ts
+
+export enum LogLevel {
+  DEBUG = 0,
+  INFO = 1,
+  WARN = 2,
+  ERROR = 3,
+}
+
+interface LogContext {
+  [key: string]: unknown;
+}
+
+class Logger {
+  private level: LogLevel = __DEV__ ? LogLevel.DEBUG : LogLevel.INFO;
+
+  private formatMessage(
+    level: string, 
+    message: string, 
+    context?: LogContext
+  ): string {
+    const timestamp = new Date().toISOString();
+    const contextStr = context ? ` ${JSON.stringify(context)}` : '';
+    return `[${timestamp}] [${level}] ${message}${contextStr}`;
+  }
+
+  debug(message: string, context?: LogContext): void {
+    if (this.level <= LogLevel.DEBUG) {
+      console.log(this.formatMessage('DEBUG', message, context));
+    }
+  }
+
+  info(message: string, context?: LogContext): void {
+    if (this.level <= LogLevel.INFO) {
+      console.log(this.formatMessage('INFO', message, context));
+    }
+  }
+
+  warn(message: string, context?: LogContext): void {
+    if (this.level <= LogLevel.WARN) {
+      console.warn(this.formatMessage('WARN', message, context));
+    }
+  }
+
+  error(message: string, error?: Error, context?: LogContext): void {
+    if (this.level <= LogLevel.ERROR) {
+      const errorContext = {
+        ...context,
+        errorName: error?.name,
+        errorMessage: error?.message,
+        stack: __DEV__ ? error?.stack : undefined,
+      };
+      console.error(this.formatMessage('ERROR', message, errorContext));
+      
+      // In production, send to error tracking service
+      if (!__DEV__ && error) {
+        this.reportToService(error, context);
+      }
+    }
+  }
+
+  private reportToService(error: Error, context?: LogContext): void {
+    // Integration with error tracking (Sentry, Crashlytics, etc.)
+    // Example: Sentry.captureException(error, { extra: context });
+  }
+
+  // Performance logging
+  time(label: string): void {
+    if (__DEV__) {
+      console.time(label);
+    }
+  }
+
+  timeEnd(label: string): void {
+    if (__DEV__) {
+      console.timeEnd(label);
+    }
+  }
+}
+
+export const logger = new Logger();
+```
+
+## Log Levels
+
+### DEBUG - Development Only
+```typescript
+// Detailed info for debugging, never in production
+logger.debug('Fetching animals', { 
+  filters: { species: 'cattle' },
+  page: 1 
+});
+
+logger.debug('SQL query executed', { 
+  query: 'SELECT * FROM animals',
+  duration: '45ms' 
+});
+```
+
+### INFO - Normal Operations
+```typescript
+// Significant events and state changes
+logger.info('Animal weight recorded', { 
+  animalId: '123', 
+  weight: 450.5 
+});
+
+logger.info('User session started', { userId: 'user-456' });
+
+logger.info('Database migration completed', { version: 3 });
+```
+
+### WARN - Potential Issues
+```typescript
+// Unexpected but handled situations
+logger.warn('Retry attempt', { 
+  operation: 'database.save',
+  attempt: 2,
+  maxAttempts: 3 
+});
+
+logger.warn('Deprecated API used', { 
+  api: 'getAnimalSync',
+  replacement: 'getAnimalAsync' 
+});
+
+logger.warn('Low storage space', { availableMB: 50 });
+```
+
+### ERROR - Failures
+```typescript
+// Errors that need attention
+logger.error('Failed to save weight', error, { 
+  animalId: '123',
+  attemptedWeight: 450.5 
+});
+
+logger.error('Database connection failed', error, {
+  database: 'main.db',
+  operation: 'open'
+});
+```
+
+## What to Log
+
+### ✅ DO Log
+```typescript
+// Application lifecycle
+logger.info('App started', { version: '1.2.0' });
+logger.info('App backgrounded');
+logger.info('App resumed');
+
+// Important business events
+logger.info('Weight recorded', { animalId, weight, timestamp });
+logger.info('Animal created', { animalId, species });
+logger.info('Data exported', { recordCount: 150, format: 'csv' });
+
+// Errors with context
+logger.error('Save failed', error, { animalId, operation: 'update' });
+
+// Performance metrics
+logger.info('Query completed', { table: 'weights', duration: '120ms', count: 500 });
+
+// State transitions
+logger.info('Sync started', { pendingRecords: 25 });
+logger.info('Sync completed', { synced: 25, failed: 0 });
+```
+
+### ❌ DON'T Log
+```typescript
+// NEVER log sensitive data
+logger.debug('User login', { password: 'secret123' });  // NEVER!
+logger.info('Token received', { token: 'abc123' });      // NEVER!
+logger.debug('Personal info', { ssn: '123-45-6789' });   // NEVER!
+
+// Don't log excessively in loops
+animals.forEach(animal => {
+  logger.debug('Processing animal', animal);  // Too verbose!
+});
+
+// Don't log entire large objects
+logger.debug('Animals loaded', { animals: hugeArray });  // Too much!
+```
+
+## Contextual Logging
+
+### Add Context to Logs
+```typescript
+// ✅ GOOD: Include relevant context
+logger.error('Failed to save animal', error, {
+  animalId: animal.id,
+  operation: 'create',
+  species: animal.species,
+  // Include what helps debugging
+});
+
+// ❌ BAD: No context
+logger.error('Failed to save animal');  // Which animal? What operation?
+```
+
+### Operation Tracing
+```typescript
+class WeighingService {
+  async recordWeight(animalId: string, weight: number): Promise<void> {
+    const operationId = generateId();
+    
+    logger.info('Weight recording started', { operationId, animalId, weight });
+    
+    try {
+      await this.validateWeight(weight);
+      logger.debug('Weight validated', { operationId });
+      
+      await this.repository.save({ animalId, weight });
+      logger.info('Weight recording completed', { operationId });
+      
+    } catch (error) {
+      logger.error('Weight recording failed', error, { operationId, animalId });
+      throw error;
+    }
+  }
+}
+```
+
+## Performance Logging
+
+### Measure Operations
+```typescript
+async function loadAnimals(): Promise<Animal[]> {
+  logger.time('loadAnimals');
+  
+  try {
+    const animals = await repository.getAll();
+    logger.timeEnd('loadAnimals');
+    logger.info('Animals loaded', { count: animals.length });
+    return animals;
+  } catch (error) {
+    logger.timeEnd('loadAnimals');
+    logger.error('Failed to load animals', error);
+    throw error;
+  }
+}
+```
+
+### Performance Thresholds
+```typescript
+async function queryWithTiming<T>(
+  operation: string, 
+  query: () => Promise<T>
+): Promise<T> {
+  const start = Date.now();
+  const result = await query();
+  const duration = Date.now() - start;
+  
+  if (duration > 1000) {
+    logger.warn('Slow operation', { operation, duration: `${duration}ms` });
+  } else {
+    logger.debug('Operation completed', { operation, duration: `${duration}ms` });
+  }
+  
+  return result;
+}
+```
+
+## Log Retention & Production
+
+### Production Considerations
+```typescript
+// In production, logs should:
+// 1. Be sent to a centralized service (not just console)
+// 2. Include device/app info
+// 3. Be anonymized (no PII)
+// 4. Have appropriate retention policies
+
+class ProductionLogger {
+  error(message: string, error: Error, context?: LogContext): void {
+    // Send to crash reporting service
+    Sentry.captureException(error, {
+      extra: {
+        message,
+        ...this.sanitizeContext(context),
+      },
+    });
+  }
+
+  private sanitizeContext(context?: LogContext): LogContext {
+    if (!context) return {};
+    
+    // Remove potentially sensitive fields
+    const { password, token, email, ...safe } = context;
+    return safe;
+  }
+}
+```
+
+## Testing Logs
+
+### Mock Logger in Tests
+```typescript
+// test/helpers/mock-logger.ts
+export const mockLogger = {
+  debug: jest.fn(),
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+};
+
+// In tests
+it('should log error when save fails', async () => {
+  repository.save.mockRejectedValue(new Error('DB Error'));
+  
+  await expect(useCase.execute(data)).rejects.toThrow();
+  
+  expect(mockLogger.error).toHaveBeenCalledWith(
+    'Failed to save',
+    expect.any(Error),
+    expect.objectContaining({ animalId: data.animalId })
+  );
+});
+```

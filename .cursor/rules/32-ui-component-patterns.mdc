@@ -1,0 +1,674 @@
+---
+globs:
+  - "src/presentation/components/**/*"
+alwaysApply: false
+---
+
+# UI Component Patterns
+
+## Searchable Dropdowns
+
+### All Dropdowns Must Be Searchable
+
+**Rule**: Every dropdown/picker with more than 5 items MUST include search functionality.
+
+### Searchable Select Component
+```typescript
+// src/presentation/components/form/searchable-select.tsx
+import { useState, useMemo } from 'react';
+import { FlatList, TextInput, TouchableOpacity } from 'react-native';
+
+interface SelectItem {
+  label: string;
+  value: string;
+  disabled?: boolean;
+}
+
+interface SearchableSelectProps {
+  items: SelectItem[];
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder?: string;
+  label?: string;
+  onQuickAdd?: () => void;  // Quick add callback
+  quickAddLabel?: string;
+}
+
+export const SearchableSelect: React.FC<SearchableSelectProps> = ({
+  items,
+  value,
+  onValueChange,
+  placeholder = 'Search...',
+  label,
+  onQuickAdd,
+  quickAddLabel = 'Add New',
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter items based on search
+  const filteredItems = useMemo(() => {
+    if (!searchQuery) return items;
+    
+    const query = searchQuery.toLowerCase();
+    return items.filter(item =>
+      item.label.toLowerCase().includes(query)
+    );
+  }, [items, searchQuery]);
+
+  const selectedItem = items.find(item => item.value === value);
+
+  return (
+    <View style={styles.container}>
+      {label && <Text style={styles.label}>{label}</Text>}
+      
+      {/* Selected Value Display */}
+      <TouchableOpacity
+        style={styles.selector}
+        onPress={() => setIsOpen(true)}
+      >
+        <Text style={[styles.selectorText, !selectedItem && styles.placeholder]}>
+          {selectedItem?.label || placeholder}
+        </Text>
+        <ChevronDownIcon />
+      </TouchableOpacity>
+
+      {/* Modal/Dropdown */}
+      <Modal visible={isOpen} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Search Input */}
+            <View style={styles.searchContainer}>
+              <SearchIcon />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoFocus
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <CloseIcon />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Quick Add Button */}
+            {onQuickAdd && (
+              <TouchableOpacity
+                style={styles.quickAddButton}
+                onPress={() => {
+                  setIsOpen(false);
+                  onQuickAdd();
+                }}
+              >
+                <PlusIcon />
+                <Text style={styles.quickAddText}>{quickAddLabel}</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Items List */}
+            <FlatList
+              data={filteredItems}
+              keyExtractor={(item) => item.value}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.item,
+                    item.value === value && styles.selectedItem,
+                  ]}
+                  onPress={() => {
+                    onValueChange(item.value);
+                    setIsOpen(false);
+                    setSearchQuery('');
+                  }}
+                  disabled={item.disabled}
+                >
+                  <Text
+                    style={[
+                      styles.itemText,
+                      item.value === value && styles.selectedItemText,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {item.value === value && <CheckIcon />}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <Text>No results found</Text>
+                  {onQuickAdd && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setIsOpen(false);
+                        onQuickAdd();
+                      }}
+                    >
+                      <Text style={styles.quickAddLink}>
+                        Add "{searchQuery}"
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              }
+            />
+
+            {/* Close Button */}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => {
+                setIsOpen(false);
+                setSearchQuery('');
+              }}
+            >
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
+```
+
+## Quick Add Pattern
+
+### When to Include Quick Add
+- ✅ Species dropdown → Quick add new species
+- ✅ Category/Tag selectors → Quick add category
+- ✅ Location picker → Quick add location
+- ✅ User assignment → Quick add user
+- ❌ System enums (read-only data)
+- ❌ Date pickers, numeric ranges
+
+### Quick Add with Modal Form
+```typescript
+interface QuickAddSelectProps extends SearchableSelectProps {
+  onQuickAdd: () => void;
+  quickAddForm?: ReactNode;
+}
+
+export const QuickAddSelect: React.FC<QuickAddSelectProps> = ({
+  onQuickAdd,
+  quickAddForm,
+  ...props
+}) => {
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+
+  const handleQuickAdd = () => {
+    setShowQuickAdd(true);
+  };
+
+  return (
+    <>
+      <SearchableSelect
+        {...props}
+        onQuickAdd={handleQuickAdd}
+      />
+
+      {/* Quick Add Modal */}
+      <Modal visible={showQuickAdd} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.quickAddModal}>
+            <Text style={styles.quickAddTitle}>Add New Item</Text>
+            
+            {quickAddForm}
+            
+            <View style={styles.quickAddActions}>
+              <Button
+                title="Cancel"
+                onPress={() => setShowQuickAdd(false)}
+                variant="secondary"
+              />
+              <Button
+                title="Add"
+                onPress={async () => {
+                  await onQuickAdd();
+                  setShowQuickAdd(false);
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+};
+```
+
+### Usage Example: Species Selector
+```typescript
+export const AnimalFormScreen: React.FC = () => {
+  const [species, setSpecies] = useState('');
+  const [speciesList, setSpeciesList] = useState([
+    { label: 'Cattle', value: 'cattle' },
+    { label: 'Sheep', value: 'sheep' },
+    { label: 'Pig', value: 'pig' },
+  ]);
+
+  const handleQuickAddSpecies = async () => {
+    // Show quick add form
+    const newSpecies = await promptForNewSpecies();
+    
+    if (newSpecies) {
+      // Add to database
+      await speciesRepository.create(newSpecies);
+      
+      // Update list
+      setSpeciesList([...speciesList, newSpecies]);
+      
+      // Auto-select new item
+      setSpecies(newSpecies.value);
+      
+      // Show success feedback
+      showToast({
+        type: 'success',
+        title: 'Species Added',
+        message: `${newSpecies.label} has been added`,
+      });
+    }
+  };
+
+  return (
+    <SearchableSelect
+      label="Species"
+      items={speciesList}
+      value={species}
+      onValueChange={setSpecies}
+      onQuickAdd={handleQuickAddSpecies}
+      quickAddLabel="Add New Species"
+    />
+  );
+};
+```
+
+## Autocomplete Pattern
+
+### Autocomplete with API Search
+```typescript
+// For large datasets, search backend instead of filtering locally
+export const AutocompleteSelect: React.FC = ({
+  onSearch,
+  onSelect,
+  onQuickAdd,
+}) => {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SelectItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Debounced search
+  const debouncedSearch = useDebouncedCallback(async (searchQuery: string) => {
+    if (searchQuery.length < 2) {
+      setResults([]);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const items = await onSearch(searchQuery);
+      setResults(items);
+    } catch (error) {
+      logger.error('Search failed', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, 300);
+
+  useEffect(() => {
+    debouncedSearch(query);
+  }, [query]);
+
+  return (
+    <View>
+      <TextInput
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Type to search..."
+      />
+      
+      {isLoading && <LoadingSpinner />}
+      
+      <FlatList
+        data={results}
+        renderItem={({ item }) => (
+          <TouchableOpacity onPress={() => onSelect(item)}>
+            <Text>{item.label}</Text>
+          </TouchableOpacity>
+        )}
+        ListEmptyComponent={
+          query.length >= 2 && !isLoading ? (
+            <View>
+              <Text>No results found</Text>
+              {onQuickAdd && (
+                <Button
+                  title={`Add "${query}"`}
+                  onPress={() => onQuickAdd(query)}
+                />
+              )}
+            </View>
+          ) : null
+        }
+      />
+    </View>
+  );
+};
+```
+
+## Multi-Select Pattern
+
+### Multi-Select with Search & Quick Add
+```typescript
+interface MultiSelectProps {
+  items: SelectItem[];
+  value: string[];  // Array of selected values
+  onChange: (values: string[]) => void;
+  onQuickAdd?: () => void;
+  label?: string;
+  max?: number;  // Maximum selections allowed
+}
+
+export const MultiSelect: React.FC<MultiSelectProps> = ({
+  items,
+  value,
+  onChange,
+  onQuickAdd,
+  label,
+  max,
+}) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+
+  const filteredItems = useMemo(() => {
+    if (!searchQuery) return items;
+    return items.filter(item =>
+      item.label.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [items, searchQuery]);
+
+  const toggleItem = (itemValue: string) => {
+    const isSelected = value.includes(itemValue);
+    
+    if (isSelected) {
+      onChange(value.filter(v => v !== itemValue));
+    } else {
+      if (max && value.length >= max) {
+        Alert.alert('Limit Reached', `You can only select up to ${max} items`);
+        return;
+      }
+      onChange([...value, itemValue]);
+    }
+  };
+
+  const selectedItems = items.filter(item => value.includes(item.value));
+
+  return (
+    <View style={styles.container}>
+      {label && <Text style={styles.label}>{label}</Text>}
+      
+      {/* Selected Pills */}
+      <View style={styles.selectedContainer}>
+        {selectedItems.map(item => (
+          <View key={item.value} style={styles.pill}>
+            <Text style={styles.pillText}>{item.label}</Text>
+            <TouchableOpacity onPress={() => toggleItem(item.value)}>
+              <CloseIcon size={16} />
+            </TouchableOpacity>
+          </View>
+        ))}
+        
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => setIsOpen(true)}
+        >
+          <PlusIcon />
+          <Text>Add</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Selection Modal */}
+      <Modal visible={isOpen} transparent>
+        <View style={styles.modalContent}>
+          {/* Search */}
+          <TextInput
+            placeholder="Search..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+
+          {/* Quick Add */}
+          {onQuickAdd && (
+            <Button title="Add New" onPress={onQuickAdd} />
+          )}
+
+          {/* Items with Checkboxes */}
+          <FlatList
+            data={filteredItems}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.checkboxItem}
+                onPress={() => toggleItem(item.value)}
+              >
+                <Checkbox checked={value.includes(item.value)} />
+                <Text>{item.label}</Text>
+              </TouchableOpacity>
+            )}
+          />
+
+          <Button title="Done" onPress={() => setIsOpen(false)} />
+        </View>
+      </Modal>
+    </View>
+  );
+};
+```
+
+## Grouped Select
+
+### Grouped Options with Search
+```typescript
+interface GroupedSelectItem {
+  label: string;
+  value: string;
+  group: string;
+}
+
+interface GroupedSelectProps {
+  items: GroupedSelectItem[];
+  value: string;
+  onValueChange: (value: string) => void;
+  onQuickAdd?: (group: string) => void;
+}
+
+export const GroupedSelect: React.FC<GroupedSelectProps> = ({
+  items,
+  value,
+  onValueChange,
+  onQuickAdd,
+}) => {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Group items
+  const groupedItems = useMemo(() => {
+    const filtered = searchQuery
+      ? items.filter(item =>
+          item.label.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : items;
+
+    return filtered.reduce((groups, item) => {
+      const group = item.group;
+      if (!groups[group]) {
+        groups[group] = [];
+      }
+      groups[group].push(item);
+      return groups;
+    }, {} as Record<string, GroupedSelectItem[]>);
+  }, [items, searchQuery]);
+
+  return (
+    <View>
+      <TextInput
+        placeholder="Search..."
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+      />
+
+      <SectionList
+        sections={Object.entries(groupedItems).map(([group, items]) => ({
+          title: group,
+          data: items,
+        }))}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            {onQuickAdd && (
+              <TouchableOpacity onPress={() => onQuickAdd(section.title)}>
+                <PlusIcon size={20} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[
+              styles.item,
+              item.value === value && styles.selectedItem,
+            ]}
+            onPress={() => onValueChange(item.value)}
+          >
+            <Text>{item.label}</Text>
+          </TouchableOpacity>
+        )}
+      />
+    </View>
+  );
+};
+```
+
+## Component Composition Example
+
+### Complete Form with Searchable Selects
+```typescript
+// src/presentation/screens/animal-form.screen.tsx
+export const AnimalFormScreen: React.FC = () => {
+  const { control, handleSubmit } = useForm<AnimalFormData>();
+
+  return (
+    <ScrollView>
+      {/* Species - Searchable with Quick Add */}
+      <Controller
+        control={control}
+        name="species"
+        render={({ field }) => (
+          <SearchableSelect
+            label="Species"
+            items={speciesList}
+            value={field.value}
+            onValueChange={field.onChange}
+            onQuickAdd={handleQuickAddSpecies}
+            quickAddLabel="Add New Species"
+          />
+        )}
+      />
+
+      {/* Tags - Multi-select with Quick Add */}
+      <Controller
+        control={control}
+        name="tags"
+        render={({ field }) => (
+          <MultiSelect
+            label="Tags"
+            items={tagsList}
+            value={field.value}
+            onChange={field.onChange}
+            onQuickAdd={handleQuickAddTag}
+            max={5}
+          />
+        )}
+      />
+
+      {/* Location - Grouped with Quick Add */}
+      <Controller
+        control={control}
+        name="location"
+        render={({ field }) => (
+          <GroupedSelect
+            label="Location"
+            items={locationsList}
+            value={field.value}
+            onValueChange={field.onChange}
+            onQuickAdd={handleQuickAddLocation}
+          />
+        )}
+      />
+
+      <Button title="Save" onPress={handleSubmit(onSubmit)} />
+    </ScrollView>
+  );
+};
+```
+
+## Best Practices
+
+### DO
+- ✅ Always include search for dropdowns with 5+ items
+- ✅ Provide quick add for user-generated data
+- ✅ Auto-select newly added items
+- ✅ Show loading state during search
+- ✅ Highlight matching text in search results
+- ✅ Allow keyboard navigation (web)
+- ✅ Debounce search input (300ms)
+- ✅ Show "No results" with quick add option
+
+### DON'T
+- ❌ Make users scroll through long lists
+- ❌ Forget to provide feedback after quick add
+- ❌ Allow quick add for system-controlled data
+- ❌ Make search case-sensitive
+- ❌ Ignore loading states
+- ❌ Forget accessibility labels
+
+## Performance Optimization
+
+### Virtual Lists for Large Datasets
+```typescript
+import { FlashList } from '@shopify/flash-list';
+
+// Use FlashList for better performance
+<FlashList
+  data={filteredItems}
+  renderItem={renderItem}
+  estimatedItemSize={50}
+  keyExtractor={(item) => item.value}
+/>
+```
+
+### Memoize Filtered Results
+```typescript
+const filteredItems = useMemo(() => {
+  return items.filter(item =>
+    item.label.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+}, [items, searchQuery]);
+```
+
+## Accessibility
+
+### Screen Reader Support
+```typescript
+<TouchableOpacity
+  accessibilityRole="button"
+  accessibilityLabel={`Select ${label}, current value ${selectedItem?.label || 'none'}`}
+  accessibilityHint="Opens a searchable list"
+>
+  {/* ... */}
+</TouchableOpacity>
+
+<TextInput
+  accessibilityLabel="Search items"
+  accessibilityHint="Type to filter the list"
+  placeholder="Search..."
+/>
+```

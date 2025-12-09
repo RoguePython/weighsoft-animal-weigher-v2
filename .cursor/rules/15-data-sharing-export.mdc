@@ -1,0 +1,482 @@
+---
+globs:
+  - "src/**/*"
+alwaysApply: false
+---
+
+# Data Sharing & Export Rules
+
+## Export Capabilities
+
+### Supported Export Formats
+```typescript
+// src/domain/types/export.types.ts
+export enum ExportFormat {
+  CSV = 'csv',
+  JSON = 'json',
+  PDF = 'pdf',
+  EXCEL = 'xlsx',
+}
+
+export interface ExportOptions {
+  format: ExportFormat;
+  dateRange?: { from: Date; to: Date };
+  includeFields: string[];
+  filename?: string;
+}
+
+export interface ExportResult {
+  success: boolean;
+  filePath?: string;
+  recordCount: number;
+  error?: string;
+}
+```
+
+## CSV Export
+
+### CSV Generation
+```typescript
+// src/data/services/csv-export.service.ts
+export class CsvExportService {
+  async exportWeightRecords(
+    records: WeightRecord[],
+    options: ExportOptions
+  ): Promise<ExportResult> {
+    try {
+      // Header row
+      const headers = ['Animal ID', 'Animal Name', 'Weight (kg)', 'Date', 'Notes'];
+      
+      // Data rows
+      const rows = records.map(record => [
+        this.escapeCSV(record.animalId),
+        this.escapeCSV(record.animalName),
+        record.weight.toString(),
+        record.recordedAt.toISOString(),
+        this.escapeCSV(record.notes ?? ''),
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+      ].join('\n');
+
+      const filePath = await this.saveFile(csvContent, options.filename);
+      
+      logger.info('CSV export completed', { 
+        recordCount: records.length, 
+        filePath 
+      });
+
+      return {
+        success: true,
+        filePath,
+        recordCount: records.length,
+      };
+    } catch (error) {
+      logger.error('CSV export failed', error);
+      return {
+        success: false,
+        recordCount: 0,
+        error: 'Failed to export data',
+      };
+    }
+  }
+
+  // Escape special characters for CSV
+  private escapeCSV(value: string): string {
+    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  }
+
+  private async saveFile(content: string, filename?: string): Promise<string> {
+    const name = filename ?? `export_${Date.now()}.csv`;
+    const path = `${FileSystem.documentDirectory}exports/${name}`;
+    await FileSystem.writeAsStringAsync(path, content);
+    return path;
+  }
+}
+```
+
+## JSON Export
+
+### Structured JSON Export
+```typescript
+// src/data/services/json-export.service.ts
+export class JsonExportService {
+  async exportData(
+    animals: Animal[],
+    weights: WeightRecord[],
+    options: ExportOptions
+  ): Promise<ExportResult> {
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      version: '1.0',
+      metadata: {
+        animalCount: animals.length,
+        weightRecordCount: weights.length,
+        dateRange: options.dateRange,
+      },
+      animals: animals.map(this.sanitizeAnimal),
+      weightRecords: weights.map(this.sanitizeWeight),
+    };
+
+    const jsonContent = JSON.stringify(exportData, null, 2);
+    const filePath = await this.saveFile(jsonContent, options.filename);
+
+    return {
+      success: true,
+      filePath,
+      recordCount: animals.length + weights.length,
+    };
+  }
+
+  // Remove internal fields before export
+  private sanitizeAnimal(animal: Animal): object {
+    const { _internalId, ...exportable } = animal as any;
+    return exportable;
+  }
+
+  private sanitizeWeight(weight: WeightRecord): object {
+    return {
+      animalId: weight.animalId,
+      weight: weight.weight,
+      recordedAt: weight.recordedAt.toISOString(),
+      notes: weight.notes,
+    };
+  }
+}
+```
+
+## Share Functionality
+
+### Share Service
+```typescript
+// src/infrastructure/services/share.service.ts
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
+
+export class ShareService {
+  async shareFile(filePath: string, mimeType: string): Promise<boolean> {
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      
+      if (!isAvailable) {
+        logger.warn('Sharing not available on this device');
+        return false;
+      }
+
+      await Sharing.shareAsync(filePath, {
+        mimeType,
+        dialogTitle: 'Share Export',
+      });
+
+      logger.info('File shared', { filePath });
+      return true;
+    } catch (error) {
+      logger.error('Share failed', error, { filePath });
+      return false;
+    }
+  }
+
+  async shareText(text: string, title?: string): Promise<boolean> {
+    try {
+      await Share.share({
+        message: text,
+        title,
+      });
+      return true;
+    } catch (error) {
+      logger.error('Text share failed', error);
+      return false;
+    }
+  }
+}
+
+// MIME types for common exports
+export const MIME_TYPES = {
+  csv: 'text/csv',
+  json: 'application/json',
+  pdf: 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+} as const;
+```
+
+## Import Functionality
+
+### Data Import
+```typescript
+// src/data/services/import.service.ts
+export class ImportService {
+  async importFromCSV(filePath: string): Promise<ImportResult> {
+    try {
+      const content = await FileSystem.readAsStringAsync(filePath);
+      const rows = this.parseCSV(content);
+      
+      // Validate header
+      const expectedHeaders = ['Animal ID', 'Weight (kg)', 'Date'];
+      if (!this.validateHeaders(rows[0], expectedHeaders)) {
+        return {
+          success: false,
+          error: 'Invalid CSV format',
+          imported: 0,
+          skipped: 0,
+        };
+      }
+
+      const results = await this.processRows(rows.slice(1));
+      
+      logger.info('CSV import completed', {
+        imported: results.imported,
+        skipped: results.skipped,
+      });
+
+      return results;
+    } catch (error) {
+      logger.error('CSV import failed', error);
+      return {
+        success: false,
+        error: 'Failed to import data',
+        imported: 0,
+        skipped: 0,
+      };
+    }
+  }
+
+  private parseCSV(content: string): string[][] {
+    // Handle quoted fields and newlines properly
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentField = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i];
+      
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        currentRow.push(currentField.trim());
+        currentField = '';
+      } else if (char === '\n' && !inQuotes) {
+        currentRow.push(currentField.trim());
+        rows.push(currentRow);
+        currentRow = [];
+        currentField = '';
+      } else {
+        currentField += char;
+      }
+    }
+    
+    // Don't forget last field/row
+    if (currentField || currentRow.length > 0) {
+      currentRow.push(currentField.trim());
+      rows.push(currentRow);
+    }
+
+    return rows;
+  }
+
+  private async processRows(rows: string[][]): Promise<ImportResult> {
+    let imported = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const row of rows) {
+      try {
+        const validation = this.validateRow(row);
+        if (!validation.valid) {
+          skipped++;
+          errors.push(validation.error!);
+          continue;
+        }
+
+        await this.importRow(row);
+        imported++;
+      } catch (error) {
+        skipped++;
+        errors.push(`Row error: ${error.message}`);
+      }
+    }
+
+    return {
+      success: errors.length === 0,
+      imported,
+      skipped,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  }
+}
+```
+
+## Data Validation on Import
+
+### Validate Imported Data
+```typescript
+interface ValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+function validateImportedWeight(data: unknown): ValidationResult {
+  if (typeof data !== 'object' || data === null) {
+    return { valid: false, error: 'Invalid data format' };
+  }
+
+  const record = data as Record<string, unknown>;
+
+  // Required fields
+  if (!record.animalId || typeof record.animalId !== 'string') {
+    return { valid: false, error: 'Missing or invalid animal ID' };
+  }
+
+  if (!record.weight || typeof record.weight !== 'number') {
+    return { valid: false, error: 'Missing or invalid weight' };
+  }
+
+  // Validate weight range
+  if (record.weight <= 0 || record.weight > 10000) {
+    return { valid: false, error: 'Weight out of valid range' };
+  }
+
+  // Validate date if present
+  if (record.recordedAt) {
+    const date = new Date(record.recordedAt as string);
+    if (isNaN(date.getTime())) {
+      return { valid: false, error: 'Invalid date format' };
+    }
+  }
+
+  return { valid: true };
+}
+```
+
+## Backup & Restore
+
+### Database Backup
+```typescript
+// src/infrastructure/services/backup.service.ts
+export class BackupService {
+  private readonly backupDir = `${FileSystem.documentDirectory}backups/`;
+
+  async createBackup(): Promise<string> {
+    await FileSystem.makeDirectoryAsync(this.backupDir, { intermediates: true });
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = `${this.backupDir}backup_${timestamp}.db`;
+    
+    // Copy database file
+    const dbPath = `${FileSystem.documentDirectory}SQLite/weighsoft.db`;
+    await FileSystem.copyAsync({
+      from: dbPath,
+      to: backupPath,
+    });
+
+    logger.info('Backup created', { path: backupPath });
+    return backupPath;
+  }
+
+  async restoreBackup(backupPath: string): Promise<boolean> {
+    try {
+      const dbPath = `${FileSystem.documentDirectory}SQLite/weighsoft.db`;
+      
+      // Verify backup exists
+      const info = await FileSystem.getInfoAsync(backupPath);
+      if (!info.exists) {
+        throw new Error('Backup file not found');
+      }
+
+      // Close current database connection first
+      await databaseManager.close();
+
+      // Replace database
+      await FileSystem.copyAsync({
+        from: backupPath,
+        to: dbPath,
+      });
+
+      // Reopen database
+      await databaseManager.initialize();
+
+      logger.info('Backup restored', { from: backupPath });
+      return true;
+    } catch (error) {
+      logger.error('Restore failed', error);
+      return false;
+    }
+  }
+
+  async listBackups(): Promise<BackupInfo[]> {
+    const files = await FileSystem.readDirectoryAsync(this.backupDir);
+    
+    const backups: BackupInfo[] = [];
+    for (const file of files) {
+      if (file.endsWith('.db')) {
+        const info = await FileSystem.getInfoAsync(`${this.backupDir}${file}`);
+        backups.push({
+          filename: file,
+          path: `${this.backupDir}${file}`,
+          size: info.size,
+          createdAt: new Date(info.modificationTime * 1000),
+        });
+      }
+    }
+
+    return backups.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+}
+```
+
+## Export Use Case
+
+### Clean Architecture Export
+```typescript
+// src/domain/usecases/export-weights.usecase.ts
+export class ExportWeightsUseCase {
+  constructor(
+    private readonly weightRepository: IWeightRepository,
+    private readonly exportService: IExportService,
+    private readonly shareService: IShareService,
+  ) {}
+
+  async execute(options: ExportOptions): Promise<Result<ExportResult, Error>> {
+    try {
+      // Fetch data
+      const weights = await this.weightRepository.getByDateRange(
+        options.dateRange?.from,
+        options.dateRange?.to
+      );
+
+      if (weights.length === 0) {
+        return Result.ok({
+          success: true,
+          recordCount: 0,
+          message: 'No records to export',
+        });
+      }
+
+      // Export
+      const exportResult = await this.exportService.export(weights, options);
+      
+      if (!exportResult.success) {
+        return Result.failure(new Error(exportResult.error));
+      }
+
+      // Optionally share
+      if (options.shareAfterExport && exportResult.filePath) {
+        await this.shareService.shareFile(
+          exportResult.filePath,
+          MIME_TYPES[options.format]
+        );
+      }
+
+      return Result.ok(exportResult);
+    } catch (error) {
+      logger.error('Export failed', error, { options });
+      return Result.failure(error);
+    }
+  }
+}
+```

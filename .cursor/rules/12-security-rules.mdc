@@ -1,0 +1,224 @@
+---
+globs:
+  - "src/**/*"
+alwaysApply: true
+---
+
+# Security Rules
+
+## Golden Security Principles
+1. **Never trust user input** - Always validate and sanitize
+2. **Never hardcode secrets** - Use environment variables
+3. **Principle of least privilege** - Only request permissions you need
+4. **Defense in depth** - Multiple layers of security
+
+## Sensitive Data Storage
+
+### What NOT to Store in Plain Text
+- API keys
+- User credentials
+- Authentication tokens
+- Personal identifiable information (PII)
+
+### Secure Storage
+```typescript
+// ✅ GOOD: Use secure storage for sensitive data
+import * as SecureStore from 'expo-secure-store';
+
+async function saveToken(token: string): Promise<void> {
+  await SecureStore.setItemAsync('auth_token', token);
+}
+
+async function getToken(): Promise<string | null> {
+  return await SecureStore.getItemAsync('auth_token');
+}
+
+// ❌ BAD: Plain AsyncStorage for sensitive data
+import AsyncStorage from '@react-native-async-storage/async-storage';
+await AsyncStorage.setItem('auth_token', token); // INSECURE!
+```
+
+### Database Security
+```typescript
+// ✅ GOOD: Encrypt sensitive fields before storage
+import CryptoJS from 'crypto-js';
+
+function encryptData(data: string, key: string): string {
+  return CryptoJS.AES.encrypt(data, key).toString();
+}
+
+function decryptData(encrypted: string, key: string): string {
+  const bytes = CryptoJS.AES.decrypt(encrypted, key);
+  return bytes.toString(CryptoJS.enc.Utf8);
+}
+```
+
+## Input Validation
+
+### Always Validate User Input
+```typescript
+// src/domain/validators/weight.validator.ts
+export class WeightValidator {
+  static validate(weight: unknown): Result<number, ValidationError> {
+    // Type check
+    if (typeof weight !== 'number' && typeof weight !== 'string') {
+      return Result.failure(new ValidationError('Weight must be a number'));
+    }
+
+    const numWeight = Number(weight);
+
+    // NaN check
+    if (Number.isNaN(numWeight)) {
+      return Result.failure(new ValidationError('Invalid weight format'));
+    }
+
+    // Range check
+    if (numWeight <= 0) {
+      return Result.failure(new ValidationError('Weight must be positive'));
+    }
+
+    if (numWeight > 10000) {
+      return Result.failure(new ValidationError('Weight exceeds maximum'));
+    }
+
+    // Precision check
+    const rounded = Math.round(numWeight * 100) / 100;
+    return Result.ok(rounded);
+  }
+}
+```
+
+### Sanitize Text Input
+```typescript
+// src/shared/utils/sanitize.ts
+export function sanitizeString(input: string): string {
+  return input
+    .trim()
+    .replace(/[<>]/g, '')  // Remove potential HTML/script tags
+    .slice(0, 500);         // Limit length
+}
+
+export function sanitizeSqlString(input: string): string {
+  // Note: Always use parameterized queries instead of this
+  return input.replace(/'/g, "''");
+}
+```
+
+## SQL Injection Prevention
+
+### ALWAYS Use Parameterized Queries
+```typescript
+// ✅ GOOD: Parameterized query
+await db.runAsync(
+  'SELECT * FROM animals WHERE name = ? AND species = ?',
+  [name, species]
+);
+
+// ❌ BAD: String interpolation (SQL INJECTION RISK!)
+await db.runAsync(
+  `SELECT * FROM animals WHERE name = '${name}'`
+);
+```
+
+## Secrets Management
+
+### Environment Variables
+```typescript
+// ✅ GOOD: Use environment variables
+const API_KEY = process.env.API_KEY;
+
+// ❌ BAD: Hardcoded secrets
+const API_KEY = 'sk_live_abc123xyz789'; // NEVER DO THIS!
+```
+
+### .gitignore Requirements
+```gitignore
+# Always ignore these
+.env
+.env.local
+.env.production
+*.keystore
+*.jks
+google-services.json
+GoogleService-Info.plist
+```
+
+## Permission Handling
+
+### Request Only Necessary Permissions
+```typescript
+// ✅ GOOD: Request permission only when needed
+async function requestCameraPermission(): Promise<boolean> {
+  const { status } = await Camera.requestCameraPermissionsAsync();
+  
+  if (status !== 'granted') {
+    // Explain why permission is needed
+    Alert.alert(
+      'Camera Permission',
+      'Camera access is needed to scan animal tags.'
+    );
+    return false;
+  }
+  return true;
+}
+```
+
+### Check Permissions Before Use
+```typescript
+async function scanTag(): Promise<void> {
+  const hasPermission = await checkCameraPermission();
+  if (!hasPermission) {
+    throw new PermissionDeniedException('Camera permission required');
+  }
+  // Proceed with scanning
+}
+```
+
+## Network Security
+
+### HTTPS Only
+```typescript
+// ✅ GOOD: Always use HTTPS
+const API_URL = 'https://api.example.com';
+
+// ❌ BAD: HTTP in production
+const API_URL = 'http://api.example.com'; // INSECURE!
+```
+
+### Certificate Pinning (for sensitive apps)
+```typescript
+// For high-security apps, implement certificate pinning
+// to prevent man-in-the-middle attacks
+```
+
+## Debug vs Production
+
+### Disable Debug Features in Production
+```typescript
+// src/shared/utils/logger.ts
+export const logger = {
+  debug: (message: string, data?: object) => {
+    if (__DEV__) {
+      console.log(`[DEBUG] ${message}`, data);
+    }
+    // Silent in production
+  },
+};
+
+// Never expose sensitive data in production logs
+if (__DEV__) {
+  console.log('Debug info:', sensitiveData);
+}
+```
+
+## Security Checklist
+
+Before each release:
+- [ ] No hardcoded secrets in code
+- [ ] All user input validated
+- [ ] Parameterized SQL queries only
+- [ ] Sensitive data in SecureStore
+- [ ] Debug logs disabled in production
+- [ ] HTTPS for all network calls
+- [ ] Permissions requested appropriately
+- [ ] .gitignore includes sensitive files

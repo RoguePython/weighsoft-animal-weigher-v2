@@ -1,0 +1,497 @@
+---
+globs:
+  - "src/**/*"
+alwaysApply: false
+---
+
+# Internationalization (i18n) Rules
+
+## Library Choice
+
+### React-i18next (Recommended)
+```bash
+npm install react-i18next i18next
+# For Expo
+expo install expo-localization
+```
+
+## Setup
+
+### i18n Configuration
+```typescript
+// src/infrastructure/i18n/i18n.config.ts
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import * as Localization from 'expo-localization';
+
+// Import translations
+import en from './locales/en.json';
+import es from './locales/es.json';
+import fr from './locales/fr.json';
+
+const resources = {
+  en: { translation: en },
+  es: { translation: es },
+  fr: { translation: fr },
+};
+
+i18n
+  .use(initReactI18next)
+  .init({
+    resources,
+    lng: Localization.locale.split('-')[0], // 'en-US' -> 'en'
+    fallbackLng: 'en',
+    compatibilityJSON: 'v3', // For Android
+    
+    interpolation: {
+      escapeValue: false, // React already escapes
+    },
+    
+    react: {
+      useSuspense: false,
+    },
+  });
+
+export default i18n;
+```
+
+### Initialize in App
+```typescript
+// App.tsx
+import './src/infrastructure/i18n/i18n.config';
+import { useTranslation } from 'react-i18next';
+
+export default function App() {
+  const { i18n } = useTranslation();
+  
+  useEffect(() => {
+    // Load saved language preference
+    AsyncStorage.getItem('language').then((lang) => {
+      if (lang) i18n.changeLanguage(lang);
+    });
+  }, []);
+
+  return <RootNavigator />;
+}
+```
+
+## Translation Files Structure
+
+### Organized by Feature
+```json
+// src/infrastructure/i18n/locales/en.json
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success"
+  },
+  
+  "animals": {
+    "title": "Animals",
+    "addNew": "Add New Animal",
+    "name": "Animal Name",
+    "species": "Species",
+    "notFound": "No animals found",
+    "deleteConfirm": "Are you sure you want to delete {{name}}?",
+    "saved": "Animal saved successfully",
+    "deleted": "Animal deleted"
+  },
+  
+  "weighing": {
+    "title": "Weight Recording",
+    "enterWeight": "Enter Weight",
+    "weight": "Weight ({{unit}})",
+    "recordedAt": "Recorded at",
+    "lastWeight": "Last weight: {{weight}} {{unit}}",
+    "history": "Weight History",
+    "average": "Average: {{weight}} {{unit}}"
+  },
+  
+  "validation": {
+    "required": "{{field}} is required",
+    "minLength": "{{field}} must be at least {{min}} characters",
+    "maxLength": "{{field}} must be no more than {{max}} characters",
+    "positive": "{{field}} must be a positive number",
+    "invalid": "Invalid {{field}}"
+  },
+  
+  "errors": {
+    "network": "Unable to connect. Please check your connection.",
+    "notFound": "Item not found",
+    "generic": "Something went wrong. Please try again.",
+    "saveFailed": "Failed to save. Please try again."
+  }
+}
+```
+
+### Spanish Translation
+```json
+// src/infrastructure/i18n/locales/es.json
+{
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito"
+  },
+  
+  "animals": {
+    "title": "Animales",
+    "addNew": "Agregar Nuevo Animal",
+    "name": "Nombre del Animal",
+    "species": "Especie",
+    "notFound": "No se encontraron animales",
+    "deleteConfirm": "¿Está seguro de que desea eliminar {{name}}?",
+    "saved": "Animal guardado exitosamente",
+    "deleted": "Animal eliminado"
+  },
+  
+  "weighing": {
+    "title": "Registro de Peso",
+    "enterWeight": "Ingrese el Peso",
+    "weight": "Peso ({{unit}})",
+    "recordedAt": "Registrado el",
+    "lastWeight": "Último peso: {{weight}} {{unit}}",
+    "history": "Historial de Peso",
+    "average": "Promedio: {{weight}} {{unit}}"
+  }
+}
+```
+
+## Usage in Components
+
+### Basic Translation
+```typescript
+import { useTranslation } from 'react-i18next';
+
+export const AnimalListScreen: React.FC = () => {
+  const { t } = useTranslation();
+
+  return (
+    <View>
+      <Text>{t('animals.title')}</Text>
+      <Button title={t('animals.addNew')} onPress={handleAdd} />
+      
+      {animals.length === 0 && (
+        <Text>{t('animals.notFound')}</Text>
+      )}
+    </View>
+  );
+};
+```
+
+### With Interpolation
+```typescript
+// Simple interpolation
+<Text>{t('weighing.weight', { unit: 'kg' })}</Text>
+// Output: "Weight (kg)"
+
+// Dynamic values
+<Text>{t('weighing.lastWeight', { weight: 450.5, unit: 'kg' })}</Text>
+// Output: "Last weight: 450.5 kg"
+
+// Confirmation with name
+Alert.alert(
+  t('common.delete'),
+  t('animals.deleteConfirm', { name: animal.name })
+);
+// Output: "Are you sure you want to delete Bessie?"
+```
+
+### Pluralization
+```json
+// en.json
+{
+  "animals": {
+    "count_one": "{{count}} animal",
+    "count_other": "{{count}} animals"
+  }
+}
+
+// Usage
+<Text>{t('animals.count', { count: animalCount })}</Text>
+// Output: "1 animal" or "5 animals"
+```
+
+### Context-Specific Translations
+```json
+{
+  "weight": {
+    "label": "Weight",
+    "label_history": "Historical Weight",
+    "label_current": "Current Weight"
+  }
+}
+
+// Usage with context
+<Text>{t('weight.label', { context: 'history' })}</Text>
+```
+
+## Language Switcher
+
+### Language Selector Component
+```typescript
+// src/presentation/components/language-selector.tsx
+import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+interface Language {
+  code: string;
+  name: string;
+  flag: string;
+}
+
+const LANGUAGES: Language[] = [
+  { code: 'en', name: 'English', flag: '🇺🇸' },
+  { code: 'es', name: 'Español', flag: '🇪🇸' },
+  { code: 'fr', name: 'Français', flag: '🇫🇷' },
+];
+
+export const LanguageSelector: React.FC = () => {
+  const { i18n } = useTranslation();
+  const [selectedLang, setSelectedLang] = useState(i18n.language);
+
+  const changeLanguage = async (langCode: string) => {
+    await i18n.changeLanguage(langCode);
+    await AsyncStorage.setItem('language', langCode);
+    setSelectedLang(langCode);
+  };
+
+  return (
+    <View>
+      {LANGUAGES.map((lang) => (
+        <TouchableOpacity
+          key={lang.code}
+          onPress={() => changeLanguage(lang.code)}
+          style={[
+            styles.languageItem,
+            selectedLang === lang.code && styles.selected,
+          ]}
+        >
+          <Text style={styles.flag}>{lang.flag}</Text>
+          <Text style={styles.name}>{lang.name}</Text>
+          {selectedLang === lang.code && <CheckIcon />}
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+};
+```
+
+## Date & Number Formatting
+
+### Date Formatting
+```typescript
+import { format } from 'date-fns';
+import { enUS, es, fr } from 'date-fns/locale';
+
+const locales = { en: enUS, es, fr };
+
+export function formatDate(date: Date, formatStr: string, lang: string): string {
+  return format(date, formatStr, { locale: locales[lang] });
+}
+
+// Usage
+const { i18n } = useTranslation();
+const formattedDate = formatDate(
+  new Date(),
+  'PPP', // Long format
+  i18n.language
+);
+// English: "December 9th, 2024"
+// Spanish: "9 de diciembre de 2024"
+```
+
+### Number Formatting
+```typescript
+export function formatNumber(num: number, lang: string): string {
+  return new Intl.NumberFormat(lang).format(num);
+}
+
+export function formatCurrency(amount: number, lang: string, currency = 'USD'): string {
+  return new Intl.NumberFormat(lang, {
+    style: 'currency',
+    currency,
+  }).format(amount);
+}
+
+// Usage
+formatNumber(1234.56, 'en'); // "1,234.56"
+formatNumber(1234.56, 'es'); // "1.234,56"
+
+formatCurrency(1234.56, 'en', 'USD'); // "$1,234.56"
+formatCurrency(1234.56, 'es', 'EUR'); // "1.234,56 €"
+```
+
+## RTL (Right-to-Left) Support
+
+### Detect RTL Languages
+```typescript
+import { I18nManager } from 'react-native';
+
+const RTL_LANGUAGES = ['ar', 'he', 'fa'];
+
+export function isRTL(language: string): boolean {
+  return RTL_LANGUAGES.includes(language);
+}
+
+// Enable RTL
+export async function setRTL(language: string) {
+  const shouldBeRTL = isRTL(language);
+  
+  if (I18nManager.isRTL !== shouldBeRTL) {
+    I18nManager.allowRTL(shouldBeRTL);
+    I18nManager.forceRTL(shouldBeRTL);
+    // Requires app restart on native
+    if (Platform.OS !== 'web') {
+      Alert.alert(
+        'Restart Required',
+        'Please restart the app to apply language changes.'
+      );
+    }
+  }
+}
+```
+
+### RTL-Aware Styles
+```typescript
+import { I18nManager } from 'react-native';
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    paddingStart: 16, // Use Start/End instead of Left/Right
+    paddingEnd: 16,
+  },
+});
+```
+
+## Validation Messages
+
+### Localized Validation
+```typescript
+// src/domain/validators/animal.validator.ts
+import i18n from '@/infrastructure/i18n/i18n.config';
+
+export class AnimalValidator {
+  static validateName(name: string): string | null {
+    if (!name.trim()) {
+      return i18n.t('validation.required', { field: i18n.t('animals.name') });
+    }
+    
+    if (name.length < 2) {
+      return i18n.t('validation.minLength', {
+        field: i18n.t('animals.name'),
+        min: 2,
+      });
+    }
+    
+    return null;
+  }
+}
+```
+
+## Testing i18n
+
+### Test with Different Languages
+```typescript
+import i18n from '@/infrastructure/i18n/i18n.config';
+
+describe('AnimalCard', () => {
+  beforeEach(() => {
+    i18n.changeLanguage('en');
+  });
+
+  it('should display animal name in English', () => {
+    const { getByText } = render(<AnimalCard animal={testAnimal} />);
+    expect(getByText('Delete')).toBeInTheDocument();
+  });
+
+  it('should display animal name in Spanish', async () => {
+    await i18n.changeLanguage('es');
+    const { getByText } = render(<AnimalCard animal={testAnimal} />);
+    expect(getByText('Eliminar')).toBeInTheDocument();
+  });
+});
+```
+
+## Best Practices
+
+### DO
+- ✅ Use namespaces to organize translations by feature
+- ✅ Keep keys descriptive: `animals.deleteConfirm` not `a.dc`
+- ✅ Use interpolation for dynamic content
+- ✅ Provide context for ambiguous terms
+- ✅ Test with longest language (German often longest)
+- ✅ Use plural forms appropriately
+- ✅ Format dates and numbers according to locale
+
+### DON'T
+- ❌ Concatenate translated strings
+- ❌ Hardcode text in components
+- ❌ Use translation keys as default text
+- ❌ Translate programmatic values (API keys, URLs)
+- ❌ Store large content in translation files (use CMS)
+- ❌ Forget to handle missing translations
+
+## Translation Workflow
+
+### For Professional Apps
+```
+1. Developer writes code with English keys
+2. Extract all translation keys
+3. Send to translators (or use service like Lokalise, Crowdin)
+4. Import translations
+5. QA test each language
+6. Deploy
+```
+
+### Key Extraction
+```bash
+# Extract all t('key') calls
+npm run i18n:extract
+
+# Generates missing translations file
+# Review and send to translators
+```
+
+## Dynamic Language Loading
+
+### Lazy Load Languages
+```typescript
+// For large apps, load languages on demand
+export async function loadLanguage(lang: string) {
+  if (i18n.hasResourceBundle(lang, 'translation')) {
+    return;
+  }
+
+  const translations = await import(`./locales/${lang}.json`);
+  i18n.addResourceBundle(lang, 'translation', translations);
+}
+
+// Usage
+const changeLanguage = async (lang: string) => {
+  await loadLanguage(lang);
+  await i18n.changeLanguage(lang);
+};
+```
+
+## Accessibility with i18n
+
+### Screen Reader Support
+```typescript
+<Button
+  accessibilityLabel={t('animals.addNew')}
+  accessibilityHint={t('animals.addNewHint')}
+>
+  <Text>{t('common.add')}</Text>
+</Button>
+```

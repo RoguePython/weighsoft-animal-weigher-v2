@@ -1,0 +1,537 @@
+---
+globs:
+  - "src/presentation/**/*"
+alwaysApply: false
+---
+
+# Animation Guidelines
+
+## Animation Philosophy
+
+### Professional App Animations Should:
+- **Enhance UX**: Guide user attention, provide feedback
+- **Be Subtle**: Not distract from core functionality
+- **Be Fast**: Complete in 200-400ms (exceptions for complex animations)
+- **Be Meaningful**: Every animation serves a purpose
+- **Be Performant**: 60 FPS minimum
+
+## Animation Libraries
+
+### React Native Animated (Built-in)
+```typescript
+import { Animated } from 'react-native';
+// Good for: Simple animations, transforms, opacity
+// Performance: Runs on native thread
+```
+
+### React Native Reanimated (Recommended)
+```bash
+npx expo install react-native-reanimated
+```
+```typescript
+import Animated, { useSharedValue, useAnimatedStyle } from 'react-native-reanimated';
+// Good for: Complex gestures, smooth 60fps animations
+// Performance: Excellent, runs on UI thread
+```
+
+### Lottie (For Complex Animations)
+```bash
+npx expo install lottie-react-native
+```
+```typescript
+import LottieView from 'lottie-react-native';
+// Good for: Designer-created animations, illustrations
+// Performance: Good for occasional use
+```
+
+## Common Animation Patterns
+
+### 1. Fade In/Out
+```typescript
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+
+export const FadeInView: React.FC = ({ children }) => (
+  <Animated.View
+    entering={FadeIn.duration(300)}
+    exiting={FadeOut.duration(200)}
+  >
+    {children}
+  </Animated.View>
+);
+
+// Usage
+{isVisible && (
+  <FadeInView>
+    <Text>Content</Text>
+  </FadeInView>
+)}
+```
+
+### 2. Slide In/Out
+```typescript
+import { SlideInRight, SlideOutLeft } from 'react-native-reanimated';
+
+export const SlidePanel: React.FC = ({ children }) => (
+  <Animated.View
+    entering={SlideInRight.duration(300)}
+    exiting={SlideOutLeft.duration(250)}
+    style={styles.panel}
+  >
+    {children}
+  </Animated.View>
+);
+```
+
+### 3. Scale Animation (Button Press)
+```typescript
+import { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+
+export const AnimatedButton: React.FC = ({ onPress, children }) => {
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const gesture = Gesture.Tap()
+    .onBegin(() => {
+      scale.value = withSpring(0.95);
+    })
+    .onFinalize(() => {
+      scale.value = withSpring(1);
+    });
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View style={animatedStyle}>
+        <TouchableOpacity onPress={onPress} activeOpacity={1}>
+          {children}
+        </TouchableOpacity>
+      </Animated.View>
+    </GestureDetector>
+  );
+};
+```
+
+### 4. Rotate (Loading Spinner)
+```typescript
+import { useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
+
+export const LoadingSpinner: React.FC = () => {
+  const rotation = useSharedValue(0);
+
+  useEffect(() => {
+    rotation.value = withRepeat(
+      withTiming(360, { duration: 1000 }),
+      -1, // Infinite
+      false
+    );
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <LoadingIcon />
+    </Animated.View>
+  );
+};
+```
+
+### 5. Height Expansion (Accordion)
+```typescript
+export const Accordion: React.FC<{ title: string; children: ReactNode }> = ({
+  title,
+  children,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const height = useSharedValue(0);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    height: height.value,
+    overflow: 'hidden',
+  }));
+
+  const toggleExpand = () => {
+    setIsExpanded(!isExpanded);
+    height.value = withSpring(isExpanded ? 0 : 'auto', {
+      damping: 15,
+      stiffness: 100,
+    });
+  };
+
+  return (
+    <View>
+      <TouchableOpacity onPress={toggleExpand}>
+        <Text>{title}</Text>
+      </TouchableOpacity>
+      <Animated.View style={animatedStyle}>
+        {children}
+      </Animated.View>
+    </View>
+  );
+};
+```
+
+## Gesture Animations
+
+### Swipe to Delete
+```typescript
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
+
+export const SwipeableRow: React.FC<{ onDelete: () => void }> = ({
+  onDelete,
+  children,
+}) => {
+  const translateX = useSharedValue(0);
+
+  const gesture = Gesture.Pan()
+    .onChange((event) => {
+      translateX.value = Math.max(event.translationX, -100);
+    })
+    .onEnd(() => {
+      if (translateX.value < -60) {
+        // Swipe threshold reached
+        translateX.value = withTiming(-100, { duration: 200 });
+        runOnJS(onDelete)();
+      } else {
+        translateX.value = withSpring(0);
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.deleteButton}>
+        <TrashIcon />
+      </View>
+      <GestureDetector gesture={gesture}>
+        <Animated.View style={[styles.row, animatedStyle]}>
+          {children}
+        </Animated.View>
+      </GestureDetector>
+    </View>
+  );
+};
+```
+
+### Pull to Refresh
+```typescript
+export const PullToRefresh: React.FC = ({ onRefresh, children }) => {
+  const translateY = useSharedValue(0);
+  const isRefreshing = useSharedValue(false);
+
+  const gesture = Gesture.Pan()
+    .onChange((event) => {
+      if (event.translationY > 0 && !isRefreshing.value) {
+        translateY.value = Math.min(event.translationY, 100);
+      }
+    })
+    .onEnd(() => {
+      if (translateY.value > 60) {
+        isRefreshing.value = true;
+        runOnJS(onRefresh)().finally(() => {
+          isRefreshing.value = false;
+          translateY.value = withSpring(0);
+        });
+      } else {
+        translateY.value = withSpring(0);
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View style={animatedStyle}>
+        {children}
+      </Animated.View>
+    </GestureDetector>
+  );
+};
+```
+
+## Micro-interactions
+
+### Success Checkmark Animation
+```typescript
+export const SuccessCheckmark: React.FC = () => {
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    // Bounce in
+    scale.value = withSpring(1, {
+      damping: 10,
+      stiffness: 100,
+    });
+    opacity.value = withTiming(1, { duration: 200 });
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <CheckCircleIcon size={48} color="green" />
+    </Animated.View>
+  );
+};
+```
+
+### Number Counter Animation
+```typescript
+export const AnimatedCounter: React.FC<{ value: number }> = ({ value }) => {
+  const animatedValue = useSharedValue(0);
+
+  useEffect(() => {
+    animatedValue.value = withTiming(value, { duration: 1000 });
+  }, [value]);
+
+  const animatedText = useDerivedValue(() => {
+    return Math.floor(animatedValue.value).toString();
+  });
+
+  return <ReanimatedText text={animatedText} />;
+};
+```
+
+## Lottie Animations
+
+### Loading Animation
+```typescript
+import LottieView from 'lottie-react-native';
+
+export const LoadingAnimation: React.FC = () => {
+  const lottieRef = useRef<LottieView>(null);
+
+  useEffect(() => {
+    lottieRef.current?.play();
+  }, []);
+
+  return (
+    <LottieView
+      ref={lottieRef}
+      source={require('@assets/animations/loading.json')}
+      autoPlay
+      loop
+      style={{ width: 100, height: 100 }}
+    />
+  );
+};
+```
+
+### Success Animation (One-time)
+```typescript
+export const SuccessAnimation: React.FC<{ onComplete?: () => void }> = ({
+  onComplete,
+}) => {
+  return (
+    <LottieView
+      source={require('@assets/animations/success.json')}
+      autoPlay
+      loop={false}
+      onAnimationFinish={onComplete}
+      style={{ width: 150, height: 150 }}
+    />
+  );
+};
+```
+
+## Layout Animations
+
+### Automatic Layout Transitions
+```typescript
+import { Layout } from 'react-native-reanimated';
+
+// Animate layout changes automatically
+export const AnimatedList: React.FC = ({ items }) => (
+  <View>
+    {items.map((item) => (
+      <Animated.View
+        key={item.id}
+        layout={Layout.springify()}
+        entering={FadeIn}
+        exiting={FadeOut}
+      >
+        <ItemCard item={item} />
+      </Animated.View>
+    ))}
+  </View>
+);
+```
+
+## Animation Timing
+
+### Recommended Durations
+| Animation Type | Duration | Easing |
+|----------------|----------|--------|
+| Micro-interaction | 100-200ms | Ease out |
+| Fade in/out | 200-300ms | Linear |
+| Slide in/out | 250-350ms | Ease in-out |
+| Scale/bounce | 300-500ms | Spring |
+| Layout change | 300-400ms | Ease in-out |
+| Page transition | 300-400ms | Ease in-out |
+
+### Spring Configuration
+```typescript
+const springConfig = {
+  damping: 15,      // Higher = less bouncy
+  stiffness: 100,   // Higher = faster
+  mass: 1,          // Higher = slower
+};
+
+translateX.value = withSpring(100, springConfig);
+```
+
+## Performance Optimization
+
+### Use Native Driver
+```typescript
+// ✅ GOOD: Runs on native thread
+Animated.timing(opacity, {
+  toValue: 1,
+  duration: 300,
+  useNativeDriver: true, // Enable native driver
+}).start();
+
+// ❌ BAD: Runs on JS thread
+Animated.timing(opacity, {
+  toValue: 1,
+  duration: 300,
+  useNativeDriver: false,
+}).start();
+```
+
+### Reduce Re-renders
+```typescript
+// ✅ GOOD: Animation doesn't trigger re-render
+const animatedStyle = useAnimatedStyle(() => ({
+  opacity: opacity.value,
+}));
+
+// ❌ BAD: Re-renders entire component
+const [opacity, setOpacity] = useState(0);
+```
+
+### Batch Animations
+```typescript
+// ✅ GOOD: Animate multiple properties together
+const animatedStyle = useAnimatedStyle(() => ({
+  opacity: opacity.value,
+  transform: [
+    { translateX: translateX.value },
+    { scale: scale.value },
+  ],
+}));
+
+// ❌ BAD: Separate animated views
+```
+
+## Accessibility with Animations
+
+### Respect Reduced Motion
+```typescript
+import { AccessibilityInfo } from 'react-native';
+
+const [reduceMotion, setReduceMotion] = useState(false);
+
+useEffect(() => {
+  AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+}, []);
+
+// Conditionally disable animations
+const duration = reduceMotion ? 0 : 300;
+
+<Animated.View
+  entering={FadeIn.duration(duration)}
+>
+  {children}
+</Animated.View>
+```
+
+### Announce State Changes
+```typescript
+// After animation completes, announce to screen reader
+const onAnimationComplete = () => {
+  AccessibilityInfo.announceForAccessibility('Item deleted');
+};
+```
+
+## Best Practices
+
+### DO
+- ✅ Use spring animations for natural feel
+- ✅ Keep animations under 400ms
+- ✅ Use native driver when possible
+- ✅ Respect reduced motion preferences
+- ✅ Provide instant feedback on touch
+- ✅ Use Lottie for complex designer animations
+- ✅ Test on low-end devices
+
+### DON'T
+- ❌ Animate too many things at once
+- ❌ Use slow, laggy animations
+- ❌ Animate layout properties without native driver
+- ❌ Forget to clean up animations
+- ❌ Override system-level animation preferences
+- ❌ Use animations that distract from content
+
+## Animation Constants
+
+### Centralized Animation Config
+```typescript
+// src/shared/constants/animations.ts
+export const ANIMATION = {
+  duration: {
+    instant: 0,
+    fast: 150,
+    normal: 300,
+    slow: 500,
+  },
+  
+  spring: {
+    gentle: { damping: 20, stiffness: 90 },
+    default: { damping: 15, stiffness: 100 },
+    bouncy: { damping: 10, stiffness: 120 },
+  },
+  
+  easing: {
+    easeIn: Easing.ease,
+    easeOut: Easing.out(Easing.ease),
+    easeInOut: Easing.inOut(Easing.ease),
+  },
+} as const;
+```
+
+## Testing Animations
+
+### Test Animation Completion
+```typescript
+describe('FadeInView', () => {
+  it('should fade in content', async () => {
+    const { getByTestId } = render(<FadeInView testID="content" />);
+    
+    const element = getByTestId('content');
+    
+    // Initially invisible
+    expect(element.props.style.opacity).toBe(0);
+    
+    // Wait for animation
+    await waitFor(() => {
+      expect(element.props.style.opacity).toBe(1);
+    }, { timeout: 500 });
+  });
+});
+```

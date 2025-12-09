@@ -1,0 +1,363 @@
+---
+globs:
+  - "src/**/*"
+alwaysApply: false
+---
+
+# Performance Rules
+
+## Performance Goals
+
+### Target Metrics
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| App Launch | < 2 seconds | Cold start to interactive |
+| Screen Transition | < 300ms | Navigation complete |
+| List Scroll | 60 FPS | No frame drops |
+| APK Size | < 30 MB | Release build |
+| Memory Usage | < 200 MB | Normal operation |
+
+## React Native Performance
+
+### Component Optimization
+
+#### Memoization
+```typescript
+// ✅ GOOD: Memoize expensive components
+export const AnimalCard = React.memo<AnimalCardProps>(({ animal, onPress }) => {
+  return (
+    <TouchableOpacity onPress={() => onPress(animal.id)}>
+      <Text>{animal.name}</Text>
+    </TouchableOpacity>
+  );
+});
+
+// ✅ GOOD: useMemo for expensive calculations
+const sortedAnimals = useMemo(() => {
+  return [...animals].sort((a, b) => a.name.localeCompare(b.name));
+}, [animals]);
+
+// ✅ GOOD: useCallback for stable references
+const handlePress = useCallback((id: string) => {
+  navigation.navigate('AnimalDetail', { id });
+}, [navigation]);
+
+// ❌ BAD: Creating new functions in render
+<FlatList
+  data={animals}
+  renderItem={({ item }) => (
+    <AnimalCard
+      animal={item}
+      onPress={() => handleAnimalPress(item.id)} // New function every render!
+    />
+  )}
+/>
+```
+
+#### Avoid Re-renders
+```typescript
+// ✅ GOOD: Stable object references
+const styles = useMemo(() => ({
+  container: { padding: 16 },
+}), []);
+
+// ❌ BAD: Inline styles (new object every render)
+<View style={{ padding: 16 }}>
+
+// ✅ GOOD: Extract static styles
+const styles = StyleSheet.create({
+  container: { padding: 16 },
+});
+```
+
+### FlatList Optimization
+
+#### Optimized FlatList
+```typescript
+const ITEM_HEIGHT = 80;
+
+<FlatList
+  data={animals}
+  keyExtractor={item => item.id}
+  renderItem={renderItem}
+  
+  // Performance props
+  getItemLayout={(_, index) => ({
+    length: ITEM_HEIGHT,
+    offset: ITEM_HEIGHT * index,
+    index,
+  })}
+  removeClippedSubviews={true}
+  maxToRenderPerBatch={10}
+  windowSize={5}
+  initialNumToRender={10}
+  updateCellsBatchingPeriod={50}
+  
+  // Prevent re-renders
+  extraData={selectedId} // Only re-render when this changes
+/>
+
+// Memoized render item
+const renderItem = useCallback(({ item }: { item: Animal }) => (
+  <AnimalCard animal={item} onPress={handlePress} />
+), [handlePress]);
+```
+
+#### Large List Strategies
+```typescript
+// For very large lists (1000+ items), consider:
+
+// 1. Pagination
+const [page, setPage] = useState(1);
+const displayedAnimals = animals.slice(0, page * PAGE_SIZE);
+
+// 2. FlashList (faster alternative)
+import { FlashList } from '@shopify/flash-list';
+
+<FlashList
+  data={animals}
+  renderItem={renderItem}
+  estimatedItemSize={ITEM_HEIGHT}
+/>
+```
+
+## Image Performance
+
+### Optimized Image Loading
+```typescript
+import FastImage from 'react-native-fast-image';
+
+// Use FastImage for better caching
+<FastImage
+  source={{
+    uri: animal.photoUrl,
+    priority: FastImage.priority.normal,
+    cache: FastImage.cacheControl.immutable,
+  }}
+  style={styles.image}
+  resizeMode={FastImage.resizeMode.cover}
+/>
+
+// Preload important images
+FastImage.preload([
+  { uri: 'https://example.com/image1.jpg' },
+  { uri: 'https://example.com/image2.jpg' },
+]);
+```
+
+### Image Sizing
+```typescript
+// ✅ GOOD: Specify exact dimensions
+<Image
+  source={{ uri: imageUrl }}
+  style={{ width: 100, height: 100 }}
+  resizeMode="cover"
+/>
+
+// ❌ BAD: Flexible sizing forces layout recalculation
+<Image
+  source={{ uri: imageUrl }}
+  style={{ flex: 1 }}
+/>
+```
+
+## Database Performance
+
+### SQLite Optimization
+
+#### Indexes
+```sql
+-- Create indexes for frequently queried columns
+CREATE INDEX idx_animals_species ON animals(species);
+CREATE INDEX idx_weights_animal_date ON weight_records(animal_id, recorded_at);
+
+-- Composite index for common queries
+CREATE INDEX idx_weights_lookup 
+ON weight_records(animal_id, recorded_at DESC);
+```
+
+#### Batch Operations
+```typescript
+// ✅ GOOD: Batch inserts in transaction
+async saveMultipleWeights(weights: WeightRecord[]): Promise<void> {
+  await this.db.withTransactionAsync(async () => {
+    for (const weight of weights) {
+      await this.db.runAsync(
+        'INSERT INTO weight_records (id, animal_id, weight, recorded_at) VALUES (?, ?, ?, ?)',
+        [weight.id, weight.animalId, weight.weight, weight.recordedAt]
+      );
+    }
+  });
+}
+
+// ❌ BAD: Individual inserts (slow)
+async saveMultipleWeights(weights: WeightRecord[]): Promise<void> {
+  for (const weight of weights) {
+    await this.saveWeight(weight); // Each is a separate transaction
+  }
+}
+```
+
+#### Query Optimization
+```typescript
+// ✅ GOOD: Select only needed columns
+await db.getAllAsync('SELECT id, name FROM animals');
+
+// ❌ BAD: Select all columns
+await db.getAllAsync('SELECT * FROM animals');
+
+// ✅ GOOD: Use LIMIT for pagination
+await db.getAllAsync(
+  'SELECT * FROM animals ORDER BY name LIMIT ? OFFSET ?',
+  [pageSize, offset]
+);
+
+// ✅ GOOD: Use prepared statements
+const stmt = await db.prepareAsync('SELECT * FROM animals WHERE id = ?');
+const result = await stmt.executeAsync([id]);
+```
+
+## Memory Management
+
+### Avoid Memory Leaks
+```typescript
+// ✅ GOOD: Cleanup subscriptions
+useEffect(() => {
+  const subscription = eventEmitter.subscribe(handleEvent);
+  
+  return () => {
+    subscription.unsubscribe(); // Cleanup!
+  };
+}, []);
+
+// ✅ GOOD: Cancel async operations
+useEffect(() => {
+  let isMounted = true;
+  
+  async function loadData() {
+    const data = await fetchData();
+    if (isMounted) {
+      setData(data);
+    }
+  }
+  
+  loadData();
+  
+  return () => {
+    isMounted = false;
+  };
+}, []);
+
+// ✅ GOOD: Use AbortController
+useEffect(() => {
+  const controller = new AbortController();
+  
+  async function loadData() {
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      const data = await response.json();
+      setData(data);
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setError(error);
+      }
+    }
+  }
+  
+  loadData();
+  
+  return () => controller.abort();
+}, [url]);
+```
+
+### Efficient State Updates
+```typescript
+// ✅ GOOD: Functional updates for derived state
+setAnimals(prev => [...prev, newAnimal]);
+
+// ✅ GOOD: Batch related state updates
+const [state, setState] = useState({ animals: [], isLoading: false });
+setState(prev => ({ ...prev, animals: newAnimals, isLoading: false }));
+
+// ❌ BAD: Multiple setState calls
+setAnimals(newAnimals);
+setIsLoading(false); // Causes extra render
+```
+
+## Bundle Size
+
+### Code Splitting
+```typescript
+// Lazy load screens
+const SettingsScreen = React.lazy(() => import('./screens/SettingsScreen'));
+
+// Dynamic imports for large libraries
+async function generatePDF() {
+  const { PDFDocument } = await import('pdf-lib');
+  // Use PDFDocument
+}
+```
+
+### Tree Shaking
+```typescript
+// ✅ GOOD: Named imports (tree-shakeable)
+import { format } from 'date-fns';
+
+// ❌ BAD: Default import (includes entire library)
+import dateFns from 'date-fns';
+```
+
+## Performance Monitoring
+
+### Measure Performance
+```typescript
+// src/shared/utils/performance.ts
+export function measureAsync<T>(
+  label: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  const start = performance.now();
+  
+  return operation().finally(() => {
+    const duration = performance.now() - start;
+    
+    if (duration > 100) {
+      logger.warn(`Slow operation: ${label}`, { duration: `${duration.toFixed(2)}ms` });
+    } else {
+      logger.debug(`Operation: ${label}`, { duration: `${duration.toFixed(2)}ms` });
+    }
+  });
+}
+
+// Usage
+const animals = await measureAsync('loadAnimals', () => 
+  repository.getAll()
+);
+```
+
+### Performance Profiling
+```typescript
+// Enable React Profiler in development
+if (__DEV__) {
+  const { setGlobalHandler } = require('react-native-performance');
+  
+  setGlobalHandler((metric) => {
+    if (metric.name === 'Render') {
+      console.log(`${metric.componentName}: ${metric.duration}ms`);
+    }
+  });
+}
+```
+
+## Performance Checklist
+
+Before release:
+- [ ] All lists use FlatList with optimization props
+- [ ] No inline functions/styles in render
+- [ ] Expensive calculations are memoized
+- [ ] Images have explicit dimensions
+- [ ] Database queries use indexes
+- [ ] No memory leaks (cleanup in useEffect)
+- [ ] Bundle size is acceptable (< 30MB)
+- [ ] App launches in < 2 seconds
+- [ ] Scroll performance is smooth (60 FPS)

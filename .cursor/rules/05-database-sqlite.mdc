@@ -1,0 +1,163 @@
+---
+globs:
+  - "src/infrastructure/database/**/*"
+  - "src/data/datasources/**/*"
+alwaysApply: false
+---
+
+# SQLite Database Standards
+
+## Scope of This Rule
+
+**This rule covers**: SQLite **implementation** - connection, setup, migrations, library usage.
+
+**For schema design principles** (tables, indexes, queries, performance), see **Rule 23** (database-rules.mdc).
+
+---
+
+## Database Setup
+
+### Library Choice
+Use `expo-sqlite` for Expo projects or `react-native-sqlite-storage` for bare React Native.
+
+### Database Location
+```typescript
+// Database file location
+const DATABASE_NAME = 'weighsoft_animal_weigher.db';
+const DATABASE_VERSION = 1;
+```
+
+## Schema Management
+
+### Migrations
+```
+src/infrastructure/database/
+├── database-manager.ts      # Database connection and setup
+├── migrations/
+│   ├── index.ts             # Migration runner
+│   ├── 001_initial_schema.ts
+│   ├── 002_add_weight_history.ts
+│   └── ...
+└── schema/
+    └── tables.ts            # Table definitions
+```
+
+### Migration Template
+```typescript
+export const migration_001_initial_schema = {
+  version: 1,
+  up: async (db: SQLiteDatabase) => {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS animals (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        species TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      
+      CREATE TABLE IF NOT EXISTS weight_records (
+        id TEXT PRIMARY KEY,
+        animal_id TEXT NOT NULL,
+        weight_kg REAL NOT NULL,
+        recorded_at INTEGER NOT NULL,
+        notes TEXT,
+        FOREIGN KEY (animal_id) REFERENCES animals(id)
+      );
+      
+      CREATE INDEX idx_weight_records_animal 
+        ON weight_records(animal_id);
+    `);
+  },
+  down: async (db: SQLiteDatabase) => {
+    await db.execAsync(`
+      DROP TABLE IF EXISTS weight_records;
+      DROP TABLE IF EXISTS animals;
+    `);
+  }
+};
+```
+
+## Data Access Patterns
+
+### Repository Implementation
+```typescript
+export class SQLiteAnimalRepository implements IAnimalRepository {
+  constructor(private readonly db: SQLiteDatabase) {}
+
+  async getById(id: string): Promise<Animal | null> {
+    const result = await this.db.getFirstAsync<AnimalDTO>(
+      'SELECT * FROM animals WHERE id = ?',
+      [id]
+    );
+    return result ? AnimalMapper.toDomain(result) : null;
+  }
+
+  async save(animal: Animal): Promise<void> {
+    const dto = AnimalMapper.toDTO(animal);
+    await this.db.runAsync(
+      `INSERT OR REPLACE INTO animals 
+       (id, name, species, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [dto.id, dto.name, dto.species, dto.created_at, dto.updated_at]
+    );
+  }
+}
+```
+
+### DTO Models
+```typescript
+// Data Transfer Object - matches database schema
+interface AnimalDTO {
+  id: string;
+  name: string;
+  species: string;
+  created_at: number;  // Unix timestamp
+  updated_at: number;  // Unix timestamp
+}
+```
+
+## Best Practices
+
+### Transactions
+```typescript
+// Use transactions for multiple operations
+async saveAnimalWithWeight(animal: Animal, weight: WeightRecord): Promise<void> {
+  await this.db.withTransactionAsync(async () => {
+    await this.animalRepo.save(animal);
+    await this.weightRepo.save(weight);
+  });
+}
+```
+
+### Parameterized Queries
+```typescript
+// ✅ GOOD: Parameterized query (SQL injection safe)
+await db.runAsync('SELECT * FROM animals WHERE id = ?', [id]);
+
+// ❌ BAD: String interpolation (SQL injection risk)
+await db.runAsync(`SELECT * FROM animals WHERE id = '${id}'`);
+```
+
+### Timestamps
+- Store as Unix timestamps (INTEGER)
+- Convert to Date objects in mappers
+- Use UTC for consistency
+
+### IDs
+- Use UUIDs as TEXT primary keys
+- Generate with `uuid` package or `crypto.randomUUID()`
+
+## Testing Database Code
+```typescript
+// Use in-memory database for tests
+const testDb = await SQLite.openDatabaseAsync(':memory:');
+
+beforeEach(async () => {
+  await runMigrations(testDb);
+});
+
+afterEach(async () => {
+  await testDb.closeAsync();
+});
+```

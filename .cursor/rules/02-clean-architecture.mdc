@@ -1,0 +1,82 @@
+---
+globs: 
+  - "src/**/*"
+alwaysApply: false
+---
+
+# Clean Architecture Rules
+
+## Layer Separation
+
+### Domain Layer (`src/domain/`)
+The innermost layer containing business logic.
+
+```
+domain/
+├── entities/       # Business objects
+├── usecases/       # Application business rules
+├── repositories/   # Repository interfaces (contracts)
+└── exceptions/     # Domain-specific exceptions
+```
+
+**Rules:**
+- NO dependencies on outer layers
+- Pure TypeScript/JavaScript - no React Native imports
+- Entities are plain objects or classes
+- Use cases orchestrate business logic
+- Repository interfaces define contracts (not implementations)
+
+### Data Layer (`src/data/`)
+Implements repository interfaces and manages data sources.
+
+```
+data/
+├── repositories/   # Repository implementations
+├── datasources/    # Local (SQLite) and remote data sources
+├── models/         # Data transfer objects (DTOs)
+└── mappers/        # Map between DTOs and entities
+```
+
+**Rules:**
+- Implements domain repository interfaces
+- Contains SQLite database operations
+- DTOs are separate from domain entities
+- Use mappers to convert between layers
+
+### Presentation Layer (`src/presentation/`)
+UI components and state management.
+
+```
+presentation/
+├── screens/        # Screen components
+├── components/     # Reusable UI components
+├── viewmodels/     # State management / business logic for UI
+├── navigation/     # Navigation configuration
+└── hooks/          # Custom React hooks
+```
+
+**Rules:**
+- Only depends on domain layer (use cases)
+- Never directly accesses data layer
+- ViewModels handle UI logic and state
+- Components are as dumb as possible
+
+### Infrastructure Layer (`src/infrastructure/`)
+External services and framework-specific implementations.
+
+```
+infrastructure/
+├── database/       # SQLite setup and migrations
+├── di/             # Dependency injection container
+└── services/       # External service integrations
+```
+
+## Dependency Rule
+```
+Presentation → Domain ← Data
+                ↑
+          Infrastructure
+```
+
+- Inner layers know nothing about outer layers
+- Dependency injection provides implementations at runtime

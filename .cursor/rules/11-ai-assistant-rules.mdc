@@ -1,0 +1,133 @@
+---
+globs:
+alwaysApply: true
+---
+
+# AI Assistant Rules
+
+## When Working on This Project
+
+### Before Making Changes
+1. **Check todo.md first** - Understand what task you're working on
+2. **Read relevant documentation** - Check docs/ folder for context
+3. **Understand the architecture** - Know which layer you're modifying
+4. **Check existing patterns** - Follow established conventions
+
+### During Implementation
+1. **Follow the layer rules**
+   - Domain layer: NO external dependencies
+   - Data layer: Implements domain interfaces
+   - Presentation: Only uses domain layer
+   
+2. **Write tests alongside code**
+   - Unit tests for business logic
+   - Add testID to UI components for E2E
+
+3. **Document as you go**
+   - Update docs if adding new patterns
+   - Add JSDoc to public APIs
+
+### After Changes
+1. **Remind user to run tests**
+2. **Remind user to verify APK build**
+3. **Update todo.md** if completing a task
+4. **Suggest version bump** if significant change
+
+## Code Generation Guidelines
+
+### File Creation Order
+When creating a new feature:
+1. Domain entities first
+2. Domain repository interface
+3. Domain use case
+4. Data layer implementation
+5. Presentation components
+6. Tests at each step
+
+### Naming Convention Reminders
+- Files: `kebab-case.ts`
+- Components: `PascalCase.tsx`
+- Interfaces: `IInterfaceName`
+- Tests: `filename.test.ts`
+
+### Import Order
+```typescript
+// 1. React/React Native
+import React, { useState } from 'react';
+import { View, Text } from 'react-native';
+
+// 2. Third-party libraries
+import { observer } from 'mobx-react-lite';
+
+// 3. Domain layer (@/domain)
+import { Animal } from '@/domain/entities/animal';
+
+// 4. Other internal imports
+import { container } from '@/infrastructure/di/container';
+
+// 5. Relative imports
+import { styles } from './styles';
+```
+
+## Common Reminders
+
+### When Adding Dependencies
+```
+Remember to:
+1. Add to package.json
+2. Run npm install
+3. Verify APK still builds
+4. Update documentation if needed
+```
+
+### When Modifying Database
+```
+Remember to:
+1. Create a new migration file
+2. Update schema documentation
+3. Test migration up and down
+4. Verify data integrity
+```
+
+### When Creating Screens
+```
+Remember to:
+1. Add to navigation types
+2. Add to navigator
+3. Add testID attributes
+4. Create E2E test
+```
+
+## Error Prevention
+
+### Common Mistakes to Avoid
+- Don't import from data layer in domain layer
+- Don't use `any` type without justification
+- Don't forget to handle loading and error states
+- Don't skip writing tests
+- Don't make changes without checking APK builds
+
+### Questions to Ask User
+If unclear about:
+- Business logic requirements
+- UI/UX design decisions
+- Data model structure
+- Feature priority
+
+## Project-Specific Knowledge
+
+### This App's Purpose
+- Animal weighing functionality
+- Offline-first with SQLite
+- Clean architecture pattern
+
+### Key Entities (Expected)
+- Animal (id, name, species, etc.)
+- WeightRecord (id, animalId, weight, timestamp)
+- Session (id, date, animals weighed)
+
+### Key Flows (Expected)
+- Add/edit animal
+- Record weight
+- View weight history
+- Export data

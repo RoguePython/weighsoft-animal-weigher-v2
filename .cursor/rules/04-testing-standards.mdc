@@ -1,0 +1,147 @@
+---
+globs:
+  - "test/**/*"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+alwaysApply: false
+---
+
+# Testing Standards
+
+## Testing Philosophy
+- **Every feature must have tests** before it's considered complete
+- **Test behavior, not implementation**
+- **Tests are documentation** - they should explain what the code does
+
+## Test Structure
+
+```
+test/
+├── unit/                    # Unit tests (Jest)
+│   ├── domain/              # Domain layer tests
+│   │   ├── entities/
+│   │   └── usecases/
+│   ├── data/                # Data layer tests
+│   │   ├── repositories/
+│   │   └── mappers/
+│   └── presentation/        # Presentation layer tests
+│       ├── viewmodels/
+│       └── components/
+└── e2e/                     # End-to-end tests (Playwright)
+    ├── flows/               # User flow tests
+    └── fixtures/            # Test data and setup
+```
+
+## Unit Testing (Jest)
+
+### Naming Convention
+- Test files: `[filename].test.ts` or `[filename].spec.ts`
+- Test descriptions: Should read like sentences
+
+```typescript
+// ✅ GOOD: Descriptive test names
+describe('AnimalWeightCalculator', () => {
+  describe('calculateTotalWeight', () => {
+    it('should return sum of all animal weights', () => {
+      // test
+    });
+
+    it('should return 0 when no animals provided', () => {
+      // test
+    });
+
+    it('should throw error when weight is negative', () => {
+      // test
+    });
+  });
+});
+```
+
+### AAA Pattern
+```typescript
+it('should calculate correct weight', () => {
+  // Arrange
+  const animals = [{ weight: 100 }, { weight: 200 }];
+  const calculator = new AnimalWeightCalculator();
+
+  // Act
+  const result = calculator.calculateTotal(animals);
+
+  // Assert
+  expect(result).toBe(300);
+});
+```
+
+### Mocking
+```typescript
+// Mock repositories for use case tests
+const mockRepository: jest.Mocked<IAnimalRepository> = {
+  getById: jest.fn(),
+  save: jest.fn(),
+  delete: jest.fn(),
+};
+
+// Reset mocks between tests
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+```
+
+## E2E Testing (Playwright)
+
+### Test Structure
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('Animal Weighing Flow', () => {
+  test.beforeEach(async ({ page }) => {
+    // Setup: Navigate to app
+    await page.goto('/');
+  });
+
+  test('user can weigh an animal', async ({ page }) => {
+    // Navigate to weighing screen
+    await page.getByRole('button', { name: 'Start Weighing' }).click();
+    
+    // Enter weight
+    await page.getByLabel('Weight').fill('150');
+    
+    // Save
+    await page.getByRole('button', { name: 'Save' }).click();
+    
+    // Verify
+    await expect(page.getByText('Weight saved: 150 kg')).toBeVisible();
+  });
+});
+```
+
+### E2E Best Practices
+- Use data-testid attributes for reliable selectors
+- Test complete user flows, not individual components
+- Use page object pattern for complex flows
+- Keep tests independent - no shared state
+
+## Coverage Requirements
+- **Minimum 80% code coverage** for domain layer
+- **Minimum 70% code coverage** for data layer
+- **Critical paths must have E2E tests**
+
+## Running Tests
+
+```bash
+# Unit tests
+npm test                    # Run all unit tests
+npm test -- --watch         # Watch mode
+npm test -- --coverage      # With coverage report
+
+# E2E tests
+npm run test:e2e            # Run Playwright tests
+npm run test:e2e:ui         # Run with Playwright UI
+```
+
+## Before Committing
+1. ✅ All unit tests pass
+2. ✅ All E2E tests pass
+3. ✅ Coverage meets minimums
+4. ✅ No skipped tests without TODO comment

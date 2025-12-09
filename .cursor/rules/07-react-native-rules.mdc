@@ -1,0 +1,192 @@
+---
+globs:
+  - "src/presentation/**/*"
+  - "**/*.tsx"
+alwaysApply: false
+---
+
+# React Native Specific Rules
+
+## Component Guidelines
+
+### Functional Components Only
+```typescript
+// ✅ GOOD: Functional component with hooks
+export const AnimalCard: React.FC<AnimalCardProps> = ({ animal }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  return <View>...</View>;
+};
+
+// ❌ BAD: Class component
+class AnimalCard extends React.Component { }
+```
+
+### Props Interface
+```typescript
+// Always define props interface
+interface AnimalCardProps {
+  animal: Animal;
+  onPress?: (id: string) => void;
+  testID?: string;  // Always include for testing
+}
+```
+
+### Default Exports vs Named Exports
+- **Screens**: Default export
+- **Components**: Named export
+- **Utilities**: Named export
+
+```typescript
+// Screen (default)
+export default function HomeScreen() { }
+
+// Component (named)
+export const AnimalCard: React.FC<Props> = () => { };
+
+// Utility (named)
+export function formatWeight(kg: number): string { }
+```
+
+## Styling
+
+### StyleSheet Usage
+```typescript
+import { StyleSheet } from 'react-native';
+
+// ✅ GOOD: StyleSheet at bottom of file
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 16,
+  },
+});
+
+// ❌ BAD: Inline styles
+<View style={{ flex: 1, padding: 16 }}>
+```
+
+### Theme Constants
+```typescript
+// src/shared/constants/theme.ts
+export const COLORS = {
+  primary: '#2196F3',
+  secondary: '#FF9800',
+  background: '#FFFFFF',
+  text: '#212121',
+  error: '#F44336',
+} as const;
+
+export const SPACING = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+} as const;
+```
+
+## Navigation
+
+### Navigation Structure
+```typescript
+// src/presentation/navigation/types.ts
+export type RootStackParamList = {
+  Home: undefined;
+  AnimalDetail: { animalId: string };
+  WeighingSession: { animalId: string };
+  Settings: undefined;
+};
+
+// Type-safe navigation
+const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+```
+
+## Performance
+
+### Memoization
+```typescript
+// Use useMemo for expensive calculations
+const sortedAnimals = useMemo(() => 
+  animals.sort((a, b) => a.name.localeCompare(b.name)),
+  [animals]
+);
+
+// Use useCallback for event handlers passed to children
+const handlePress = useCallback((id: string) => {
+  navigation.navigate('AnimalDetail', { animalId: id });
+}, [navigation]);
+
+// Use React.memo for pure components
+export const AnimalCard = React.memo<AnimalCardProps>(({ animal }) => {
+  return <View>...</View>;
+});
+```
+
+### FlatList Optimization
+```typescript
+<FlatList
+  data={animals}
+  keyExtractor={(item) => item.id}
+  renderItem={renderItem}
+  getItemLayout={(data, index) => ({
+    length: ITEM_HEIGHT,
+    offset: ITEM_HEIGHT * index,
+    index,
+  })}
+  removeClippedSubviews={true}
+  maxToRenderPerBatch={10}
+  windowSize={5}
+/>
+```
+
+## Error Boundaries
+```typescript
+// Wrap screens with error boundaries
+export class ErrorBoundary extends React.Component<Props, State> {
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Log to error reporting service
+    logError(error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <ErrorFallback error={this.state.error} />;
+    }
+    return this.props.children;
+  }
+}
+```
+
+## Testing Attributes
+```typescript
+// Always add testID for E2E testing
+<TouchableOpacity
+  testID="animal-card-press"
+  onPress={handlePress}
+>
+  <Text testID="animal-card-name">{animal.name}</Text>
+</TouchableOpacity>
+```
+
+## Platform Specific Code
+```typescript
+import { Platform } from 'react-native';
+
+// Platform-specific styles
+const styles = StyleSheet.create({
+  shadow: Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+    },
+    android: {
+      elevation: 4,
+    },
+  }),
+});
+```

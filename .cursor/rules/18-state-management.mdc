@@ -1,0 +1,440 @@
+---
+globs:
+  - "src/presentation/**/*"
+  - "src/**/*.viewmodel.ts"
+alwaysApply: false
+---
+
+# State Management Rules
+
+## State Management Choice
+
+### Recommended: MobX with ViewModels
+For this project, we use **MobX** for state management with the ViewModel pattern:
+- Simple and intuitive
+- Works well with Clean Architecture
+- Good React Native performance
+- Easy testing with dependency injection
+
+## ViewModel Pattern
+
+### ViewModel Structure
+```typescript
+// src/presentation/viewmodels/animal-list.viewmodel.ts
+import { makeAutoObservable, runInAction } from 'mobx';
+import { GetAnimalsUseCase } from '@/domain/usecases/get-animals.usecase';
+import { Animal } from '@/domain/entities/animal';
+
+export class AnimalListViewModel {
+  // Observable state
+  animals: Animal[] = [];
+  isLoading = false;
+  error: string | null = null;
+  searchQuery = '';
+
+  constructor(
+    private readonly getAnimalsUseCase: GetAnimalsUseCase
+  ) {
+    makeAutoObservable(this);
+  }
+
+  // Computed values
+  get filteredAnimals(): Animal[] {
+    if (!this.searchQuery) return this.animals;
+    
+    const query = this.searchQuery.toLowerCase();
+    return this.animals.filter(animal =>
+      animal.name.toLowerCase().includes(query)
+    );
+  }
+
+  get hasAnimals(): boolean {
+    return this.animals.length > 0;
+  }
+
+  get isEmpty(): boolean {
+    return !this.isLoading && this.animals.length === 0;
+  }
+
+  // Actions
+  setSearchQuery(query: string): void {
+    this.searchQuery = query;
+  }
+
+  async loadAnimals(): Promise<void> {
+    this.isLoading = true;
+    this.error = null;
+
+    try {
+      const result = await this.getAnimalsUseCase.execute();
+      
+      runInAction(() => {
+        if (result.success) {
+          this.animals = result.data;
+        } else {
+          this.error = result.error.message;
+        }
+      });
+    } catch (error) {
+      runInAction(() => {
+        this.error = 'Failed to load animals';
+      });
+    } finally {
+      runInAction(() => {
+        this.isLoading = false;
+      });
+    }
+  }
+
+  // Factory for DI
+  static create(): AnimalListViewModel {
+    return new AnimalListViewModel(
+      container.getAnimalsUseCase
+    );
+  }
+}
+```
+
+### Using ViewModel in Components
+```typescript
+// src/presentation/screens/animal-list.screen.tsx
+import { observer } from 'mobx-react-lite';
+import { useState, useEffect } from 'react';
+import { AnimalListViewModel } from '../viewmodels/animal-list.viewmodel';
+
+const AnimalListScreen = observer(() => {
+  const [viewModel] = useState(() => AnimalListViewModel.create());
+
+  useEffect(() => {
+    viewModel.loadAnimals();
+  }, [viewModel]);
+
+  if (viewModel.isLoading) {
+    return <LoadingSpinner />;
+  }
+
+  if (viewModel.error) {
+    return <ErrorMessage message={viewModel.error} />;
+  }
+
+  return (
+    <View>
+      <SearchInput
+        value={viewModel.searchQuery}
+        onChangeText={viewModel.setSearchQuery}
+      />
+      <FlatList
+        data={viewModel.filteredAnimals}
+        renderItem={({ item }) => <AnimalCard animal={item} />}
+        keyExtractor={item => item.id}
+        ListEmptyComponent={<EmptyState />}
+      />
+    </View>
+  );
+});
+
+export default AnimalListScreen;
+```
+
+## State Types
+
+### When to Use Each State Type
+
+| State Type | Use For | Example |
+|------------|---------|---------|
+| **Local Component** | UI-only, single component | `isDropdownOpen`, `inputValue` |
+| **ViewModel** | Screen/feature state | `animals[]`, `isLoading`, `error` |
+| **Global Store** | App-wide state | `currentUser`, `appSettings` |
+| **URL/Navigation** | Shareable state | Screen params, filters |
+
+### Local Component State
+```typescript
+// For simple, UI-only state
+const AnimalCard: React.FC<Props> = ({ animal }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  return (
+    <TouchableOpacity onPress={() => setIsExpanded(!isExpanded)}>
+      <Text>{animal.name}</Text>
+      {isExpanded && <Text>{animal.notes}</Text>}
+    </TouchableOpacity>
+  );
+};
+```
+
+### Global Store (App-Wide State)
+```typescript
+// src/presentation/stores/app.store.ts
+import { makeAutoObservable } from 'mobx';
+
+class AppStore {
+  // Global settings
+  theme: 'light' | 'dark' = 'light';
+  language = 'en';
+  
+  // User session
+  isAuthenticated = false;
+  currentUser: User | null = null;
+
+  constructor() {
+    makeAutoObservable(this);
+  }
+
+  setTheme(theme: 'light' | 'dark'): void {
+    this.theme = theme;
+  }
+
+  async logout(): Promise<void> {
+    this.currentUser = null;
+    this.isAuthenticated = false;
+    await SecureStore.deleteItemAsync('auth_token');
+  }
+}
+
+export const appStore = new AppStore();
+```
+
+## State Management Best Practices
+
+### DO
+```typescript
+// ✅ Use runInAction for async state updates
+async loadData() {
+  this.isLoading = true;
+  const data = await fetchData();
+  runInAction(() => {
+    this.data = data;
+    this.isLoading = false;
+  });
+}
+
+// ✅ Use computed for derived state
+get totalWeight(): number {
+  return this.weights.reduce((sum, w) => sum + w.value, 0);
+}
+
+// ✅ Keep ViewModels testable with DI
+class ViewModel {
+  constructor(private useCase: IUseCase) {}
+}
+```
+
+### DON'T
+```typescript
+// ❌ Don't mutate state in render
+const Screen = observer(() => {
+  viewModel.count++;  // BAD!
+  return <Text>{viewModel.count}</Text>;
+});
+
+// ❌ Don't create ViewModels in render
+const Screen = () => {
+  const viewModel = new ViewModel();  // Created every render!
+  return <View />;
+};
+
+// ❌ Don't use multiple useState for related state
+const [animals, setAnimals] = useState([]);
+const [isLoading, setIsLoading] = useState(false);
+const [error, setError] = useState(null);
+// Better: Use a ViewModel
+```
+
+## Loading & Error States
+
+### Standard Loading Pattern
+```typescript
+interface LoadingState<T> {
+  data: T | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
+class BaseViewModel<T> {
+  data: T | null = null;
+  isLoading = false;
+  error: string | null = null;
+
+  constructor() {
+    makeAutoObservable(this);
+  }
+
+  get hasData(): boolean {
+    return this.data !== null;
+  }
+
+  get showEmpty(): boolean {
+    return !this.isLoading && !this.error && !this.hasData;
+  }
+
+  protected async loadData(fetcher: () => Promise<T>): Promise<void> {
+    this.isLoading = true;
+    this.error = null;
+
+    try {
+      const result = await fetcher();
+      runInAction(() => {
+        this.data = result;
+      });
+    } catch (error) {
+      runInAction(() => {
+        this.error = this.mapError(error);
+      });
+    } finally {
+      runInAction(() => {
+        this.isLoading = false;
+      });
+    }
+  }
+
+  protected mapError(error: unknown): string {
+    if (error instanceof DomainException) {
+      return error.message;
+    }
+    return 'An unexpected error occurred';
+  }
+}
+```
+
+## Form State
+
+### Form ViewModel
+```typescript
+// src/presentation/viewmodels/animal-form.viewmodel.ts
+export class AnimalFormViewModel {
+  // Form fields
+  name = '';
+  species = '';
+  notes = '';
+  
+  // Validation
+  errors: Record<string, string> = {};
+  touched: Record<string, boolean> = {};
+  
+  // State
+  isSubmitting = false;
+  submitError: string | null = null;
+
+  constructor(
+    private readonly saveAnimalUseCase: SaveAnimalUseCase,
+    private readonly existingAnimal?: Animal
+  ) {
+    makeAutoObservable(this);
+    
+    if (existingAnimal) {
+      this.name = existingAnimal.name;
+      this.species = existingAnimal.species;
+      this.notes = existingAnimal.notes ?? '';
+    }
+  }
+
+  // Computed
+  get isValid(): boolean {
+    return Object.keys(this.errors).length === 0 && this.name.trim() !== '';
+  }
+
+  get canSubmit(): boolean {
+    return this.isValid && !this.isSubmitting;
+  }
+
+  // Actions
+  setField(field: 'name' | 'species' | 'notes', value: string): void {
+    this[field] = value;
+    this.touched[field] = true;
+    this.validate();
+  }
+
+  validate(): void {
+    const errors: Record<string, string> = {};
+    
+    if (!this.name.trim()) {
+      errors.name = 'Name is required';
+    }
+    
+    if (!this.species.trim()) {
+      errors.species = 'Species is required';
+    }
+    
+    this.errors = errors;
+  }
+
+  async submit(): Promise<boolean> {
+    this.validate();
+    
+    if (!this.isValid) {
+      return false;
+    }
+
+    this.isSubmitting = true;
+    this.submitError = null;
+
+    try {
+      const animal: Animal = {
+        id: this.existingAnimal?.id ?? generateId(),
+        name: this.name.trim(),
+        species: this.species.trim(),
+        notes: this.notes.trim() || null,
+      };
+
+      const result = await this.saveAnimalUseCase.execute(animal);
+      
+      runInAction(() => {
+        if (!result.success) {
+          this.submitError = result.error.message;
+        }
+      });
+
+      return result.success;
+    } catch (error) {
+      runInAction(() => {
+        this.submitError = 'Failed to save animal';
+      });
+      return false;
+    } finally {
+      runInAction(() => {
+        this.isSubmitting = false;
+      });
+    }
+  }
+}
+```
+
+## Testing ViewModels
+
+### ViewModel Tests
+```typescript
+describe('AnimalListViewModel', () => {
+  let viewModel: AnimalListViewModel;
+  let mockUseCase: jest.Mocked<GetAnimalsUseCase>;
+
+  beforeEach(() => {
+    mockUseCase = {
+      execute: jest.fn(),
+    };
+    viewModel = new AnimalListViewModel(mockUseCase);
+  });
+
+  it('should load animals successfully', async () => {
+    const animals = [createTestAnimal()];
+    mockUseCase.execute.mockResolvedValue(Result.ok(animals));
+
+    await viewModel.loadAnimals();
+
+    expect(viewModel.animals).toEqual(animals);
+    expect(viewModel.isLoading).toBe(false);
+    expect(viewModel.error).toBeNull();
+  });
+
+  it('should filter animals by search query', async () => {
+    viewModel.animals = [
+      createTestAnimal({ name: 'Bessie' }),
+      createTestAnimal({ name: 'Duke' }),
+    ];
+
+    viewModel.setSearchQuery('bess');
+
+    expect(viewModel.filteredAnimals).toHaveLength(1);
+    expect(viewModel.filteredAnimals[0].name).toBe('Bessie');
+  });
+});
+```

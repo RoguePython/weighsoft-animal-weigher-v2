@@ -1,0 +1,397 @@
+---
+globs:
+  - "src/presentation/**/*"
+  - "assets/**/*"
+alwaysApply: false
+---
+
+# Asset Management Rules
+
+## Asset Structure
+
+### Directory Organization
+```
+assets/
+├── images/
+│   ├── icons/              # App icons
+│   │   ├── icon.png        # 1024x1024 app icon
+│   │   ├── adaptive-icon.png
+│   │   └── splash.png
+│   ├── illustrations/      # Larger graphics
+│   │   ├── empty-state.png
+│   │   └── onboarding/
+│   └── photos/             # Photo placeholders
+│       └── animal-placeholder.png
+├── fonts/
+│   ├── Roboto-Regular.ttf
+│   ├── Roboto-Medium.ttf
+│   └── Roboto-Bold.ttf
+├── animations/             # Lottie animations
+│   ├── loading.json
+│   └── success.json
+└── sounds/                 # Audio files (if needed)
+    └── notification.mp3
+```
+
+## Image Guidelines
+
+### Resolution & Formats
+
+#### Standard Image Sizes
+```typescript
+// Provide multiple resolutions
+assets/images/
+├── logo.png        // @1x (base)
+├── logo@2x.png     // @2x (retina)
+└── logo@3x.png     // @3x (high-density)
+
+// React Native auto-selects correct resolution
+import logo from '@assets/images/logo.png';
+```
+
+#### Recommended Formats
+| Format | Use Case |
+|--------|----------|
+| **PNG** | Icons, logos, UI elements (transparency needed) |
+| **JPEG** | Photos, complex images (smaller file size) |
+| **WebP** | Best compression (Android 4.0+, iOS 14+) |
+| **SVG** | Vector icons (via react-native-svg) |
+
+### Image Optimization
+
+#### Compression Guidelines
+```bash
+# Target file sizes
+- App icons: < 100KB
+- UI elements: < 50KB
+- Illustrations: < 200KB
+- Photos: < 300KB (compressed)
+
+# Tools
+- TinyPNG / TinyJPG (lossless compression)
+- ImageOptim (Mac)
+- Squoosh (online)
+```
+
+#### Lazy Loading
+```typescript
+// Lazy load off-screen images
+import { Image } from 'react-native';
+
+<FlatList
+  data={animals}
+  renderItem={({ item }) => (
+    <Image
+      source={{ uri: item.photoUrl }}
+      style={styles.animalPhoto}
+      // Native lazy loading
+      loading="lazy"
+      // Placeholder while loading
+      defaultSource={require('@assets/images/animal-placeholder.png')}
+    />
+  )}
+/>
+```
+
+### Image Component Best Practices
+```typescript
+// src/presentation/components/optimized-image.tsx
+import { Image, ImageStyle, StyleProp } from 'react-native';
+import { useState } from 'react';
+
+interface OptimizedImageProps {
+  source: { uri: string } | number;
+  style?: StyleProp<ImageStyle>;
+  placeholder?: number;
+  accessibilityLabel: string;
+}
+
+export const OptimizedImage: React.FC<OptimizedImageProps> = ({
+  source,
+  style,
+  placeholder = require('@assets/images/placeholder.png'),
+  accessibilityLabel,
+}) => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  return (
+    <Image
+      source={hasError ? placeholder : source}
+      style={style}
+      defaultSource={placeholder}
+      onLoadStart={() => setIsLoading(true)}
+      onLoadEnd={() => setIsLoading(false)}
+      onError={() => setHasError(true)}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="image"
+      resizeMode="cover"
+    />
+  );
+};
+```
+
+## Icons
+
+### Icon System
+```typescript
+// Use a consistent icon library
+// Recommended: @expo/vector-icons or react-native-vector-icons
+
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+
+// Create icon constants for consistency
+// src/shared/constants/icons.ts
+export const Icons = {
+  // Navigation
+  home: { name: 'home', family: Ionicons },
+  settings: { name: 'settings', family: Ionicons },
+  back: { name: 'arrow-back', family: Ionicons },
+  
+  // Actions
+  add: { name: 'add-circle', family: Ionicons },
+  edit: { name: 'create', family: Ionicons },
+  delete: { name: 'trash', family: Ionicons },
+  save: { name: 'checkmark', family: Ionicons },
+  
+  // Status
+  success: { name: 'checkmark-circle', family: Ionicons },
+  error: { name: 'alert-circle', family: Ionicons },
+  warning: { name: 'warning', family: Ionicons },
+} as const;
+```
+
+### Icon Component
+```typescript
+// src/presentation/components/icon.tsx
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '@/shared/constants/theme';
+
+interface IconProps {
+  name: keyof typeof Ionicons.glyphMap;
+  size?: number;
+  color?: string;
+  accessibilityLabel?: string;
+}
+
+export const Icon: React.FC<IconProps> = ({
+  name,
+  size = 24,
+  color = COLORS.text,
+  accessibilityLabel,
+}) => {
+  return (
+    <Ionicons
+      name={name}
+      size={size}
+      color={color}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole={accessibilityLabel ? 'image' : undefined}
+      accessibilityElementsHidden={!accessibilityLabel}
+    />
+  );
+};
+```
+
+## Fonts
+
+### Font Setup (Expo)
+```typescript
+// App.tsx
+import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
+
+SplashScreen.preventAutoHideAsync();
+
+export default function App() {
+  const [fontsLoaded] = useFonts({
+    'Roboto-Regular': require('./assets/fonts/Roboto-Regular.ttf'),
+    'Roboto-Medium': require('./assets/fonts/Roboto-Medium.ttf'),
+    'Roboto-Bold': require('./assets/fonts/Roboto-Bold.ttf'),
+  });
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
+  return <RootNavigator />;
+}
+```
+
+### Typography System
+```typescript
+// src/shared/constants/typography.ts
+export const FONTS = {
+  regular: 'Roboto-Regular',
+  medium: 'Roboto-Medium',
+  bold: 'Roboto-Bold',
+} as const;
+
+export const FONT_SIZES = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 18,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+} as const;
+
+export const LINE_HEIGHTS = {
+  tight: 1.2,
+  normal: 1.5,
+  relaxed: 1.75,
+} as const;
+
+// Pre-defined text styles
+export const TEXT_STYLES = StyleSheet.create({
+  h1: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZES.xxxl,
+    lineHeight: FONT_SIZES.xxxl * LINE_HEIGHTS.tight,
+  },
+  h2: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZES.xxl,
+    lineHeight: FONT_SIZES.xxl * LINE_HEIGHTS.tight,
+  },
+  body: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZES.md,
+    lineHeight: FONT_SIZES.md * LINE_HEIGHTS.normal,
+  },
+  caption: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZES.xs,
+    lineHeight: FONT_SIZES.xs * LINE_HEIGHTS.normal,
+  },
+});
+```
+
+## Animations (Lottie)
+
+### Using Lottie Animations
+```typescript
+import LottieView from 'lottie-react-native';
+
+// Loading animation
+<LottieView
+  source={require('@assets/animations/loading.json')}
+  autoPlay
+  loop
+  style={{ width: 100, height: 100 }}
+/>
+
+// Success animation (play once)
+const successRef = useRef<LottieView>(null);
+
+<LottieView
+  ref={successRef}
+  source={require('@assets/animations/success.json')}
+  loop={false}
+  style={{ width: 150, height: 150 }}
+/>
+
+// Trigger animation
+successRef.current?.play();
+```
+
+## Asset Loading
+
+### Preloading Assets
+```typescript
+// src/infrastructure/services/asset-loader.ts
+import { Asset } from 'expo-asset';
+import * as Font from 'expo-font';
+
+export async function loadAssetsAsync(): Promise<void> {
+  // Preload images
+  const imageAssets = Asset.loadAsync([
+    require('@assets/images/icons/icon.png'),
+    require('@assets/images/illustrations/empty-state.png'),
+  ]);
+
+  // Preload fonts
+  const fontAssets = Font.loadAsync({
+    'Roboto-Regular': require('@assets/fonts/Roboto-Regular.ttf'),
+    'Roboto-Medium': require('@assets/fonts/Roboto-Medium.ttf'),
+    'Roboto-Bold': require('@assets/fonts/Roboto-Bold.ttf'),
+  });
+
+  await Promise.all([imageAssets, fontAssets]);
+}
+```
+
+## Bundle Size Optimization
+
+### Image Import Best Practices
+```typescript
+// ✅ GOOD: Import only needed assets
+import emptyStateImage from '@assets/images/empty-state.png';
+
+// ❌ BAD: Import everything
+import * as Images from '@assets/images';
+
+// ✅ GOOD: Use require for conditional images
+const animalImage = animal.hasPhoto 
+  ? { uri: animal.photoUrl }
+  : require('@assets/images/animal-placeholder.png');
+```
+
+### Asset Analysis
+```bash
+# Analyze bundle size
+npx react-native-bundle-visualizer
+
+# Check asset sizes
+find ./assets -type f -exec du -h {} \; | sort -rh | head -20
+```
+
+## Asset Naming Conventions
+
+### File Naming
+```
+✅ GOOD:
+- animal-placeholder.png
+- icon-settings.png
+- btn-primary-bg.png
+- loading-spinner.json
+
+❌ BAD:
+- AnimalPlaceholder.png   (avoid PascalCase)
+- icon settings.png       (avoid spaces)
+- img1.png                (not descriptive)
+```
+
+### Path Aliases
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    "paths": {
+      "@assets/*": ["./assets/*"],
+      "@images/*": ["./assets/images/*"],
+      "@fonts/*": ["./assets/fonts/*"]
+    }
+  }
+}
+
+// babel.config.js (for Metro)
+module.exports = {
+  plugins: [
+    ['module-resolver', {
+      alias: {
+        '@assets': './assets',
+        '@images': './assets/images',
+        '@fonts': './assets/fonts',
+      },
+    }],
+  ],
+};
+```

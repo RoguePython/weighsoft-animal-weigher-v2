@@ -1,0 +1,364 @@
+---
+globs:
+  - "src/**/*"
+  - ".env*"
+  - "app.config.*"
+alwaysApply: false
+---
+
+# Environment Configuration Rules
+
+## Environment Types
+
+### Standard Environments
+```
+development  - Local development (default)
+staging      - Testing/QA environment
+production   - Live production
+```
+
+## Environment Variables
+
+### Structure
+```bash
+# .env.example (commit this - template without values)
+# Database
+DATABASE_NAME=weighsoft.db
+
+# API (if applicable)
+API_BASE_URL=https://api.example.com
+API_TIMEOUT=30000
+
+# Feature Flags
+FEATURE_EXPORT_PDF=true
+FEATURE_CLOUD_SYNC=false
+
+# Build
+APP_VERSION=1.0.0
+BUILD_NUMBER=1
+```
+
+### Environment-Specific Files
+```
+.env              # Default/development (DO NOT COMMIT)
+.env.development  # Development overrides
+.env.staging      # Staging environment
+.env.production   # Production environment
+.env.example      # Template (COMMIT THIS)
+```
+
+### .gitignore
+```gitignore
+# Environment files - NEVER commit secrets
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+
+# Keep the example
+!.env.example
+```
+
+## Configuration Service
+
+### Type-Safe Config
+```typescript
+// src/infrastructure/config/app-config.ts
+import Constants from 'expo-constants';
+
+interface AppConfig {
+  // Environment
+  environment: 'development' | 'staging' | 'production';
+  isDev: boolean;
+  isProd: boolean;
+  
+  // Database
+  databaseName: string;
+  
+  // API
+  apiBaseUrl: string;
+  apiTimeout: number;
+  
+  // Features
+  features: {
+    exportPdf: boolean;
+    cloudSync: boolean;
+  };
+  
+  // App Info
+  version: string;
+  buildNumber: string;
+}
+
+function loadConfig(): AppConfig {
+  const env = process.env.NODE_ENV ?? 'development';
+  
+  return {
+    environment: env as AppConfig['environment'],
+    isDev: env === 'development',
+    isProd: env === 'production',
+    
+    databaseName: process.env.DATABASE_NAME ?? 'weighsoft.db',
+    
+    apiBaseUrl: process.env.API_BASE_URL ?? 'https://api.example.com',
+    apiTimeout: Number(process.env.API_TIMEOUT) || 30000,
+    
+    features: {
+      exportPdf: process.env.FEATURE_EXPORT_PDF === 'true',
+      cloudSync: process.env.FEATURE_CLOUD_SYNC === 'true',
+    },
+    
+    version: Constants.expoConfig?.version ?? '0.0.0',
+    buildNumber: Constants.expoConfig?.android?.versionCode?.toString() ?? '0',
+  };
+}
+
+// Singleton config instance
+export const config = Object.freeze(loadConfig());
+```
+
+### Usage
+```typescript
+import { config } from '@/infrastructure/config/app-config';
+
+// Check environment
+if (config.isDev) {
+  logger.debug('Debug mode enabled');
+}
+
+// Use feature flags
+if (config.features.cloudSync) {
+  await syncService.sync();
+}
+
+// API configuration
+const response = await fetch(config.apiBaseUrl + '/animals', {
+  timeout: config.apiTimeout,
+});
+```
+
+## Expo Configuration
+
+### app.config.ts (Dynamic)
+```typescript
+// app.config.ts
+import 'dotenv/config';
+
+export default ({ config }) => {
+  const environment = process.env.APP_ENV ?? 'development';
+  
+  return {
+    ...config,
+    name: getAppName(environment),
+    slug: 'weighsoft-animal-weigher',
+    version: process.env.APP_VERSION ?? '1.0.0',
+    
+    extra: {
+      environment,
+      apiUrl: process.env.API_BASE_URL,
+      eas: {
+        projectId: process.env.EAS_PROJECT_ID,
+      },
+    },
+    
+    android: {
+      ...config.android,
+      package: getPackageName(environment),
+      versionCode: parseInt(process.env.BUILD_NUMBER ?? '1', 10),
+    },
+    
+    ios: {
+      ...config.ios,
+      bundleIdentifier: getBundleId(environment),
+      buildNumber: process.env.BUILD_NUMBER ?? '1',
+    },
+  };
+};
+
+function getAppName(env: string): string {
+  switch (env) {
+    case 'production': return 'Weighsoft Animal Weigher';
+    case 'staging': return 'Weighsoft (Staging)';
+    default: return 'Weighsoft (Dev)';
+  }
+}
+
+function getPackageName(env: string): string {
+  switch (env) {
+    case 'production': return 'com.weighsoft.animalweigher';
+    case 'staging': return 'com.weighsoft.animalweigher.staging';
+    default: return 'com.weighsoft.animalweigher.dev';
+  }
+}
+
+function getBundleId(env: string): string {
+  return getPackageName(env);
+}
+```
+
+## Build Commands
+
+### NPM Scripts
+```json
+// package.json
+{
+  "scripts": {
+    "start": "expo start",
+    "start:dev": "APP_ENV=development expo start",
+    "start:staging": "APP_ENV=staging expo start",
+    
+    "android:dev": "APP_ENV=development expo run:android",
+    "android:staging": "APP_ENV=staging expo run:android",
+    "android:prod": "APP_ENV=production expo run:android",
+    
+    "build:dev": "eas build --profile development",
+    "build:staging": "eas build --profile staging",
+    "build:prod": "eas build --profile production"
+  }
+}
+```
+
+### EAS Build Profiles
+```json
+// eas.json
+{
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "development"
+      }
+    },
+    "staging": {
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "staging"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "env": {
+        "APP_ENV": "production"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  }
+}
+```
+
+## Feature Flags
+
+### Feature Flag Service
+```typescript
+// src/infrastructure/config/feature-flags.ts
+import { config } from './app-config';
+
+export const FeatureFlags = {
+  // Read from config
+  EXPORT_PDF: config.features.exportPdf,
+  CLOUD_SYNC: config.features.cloudSync,
+  
+  // Environment-based
+  DEBUG_MODE: config.isDev,
+  ANALYTICS: config.isProd,
+  
+  // Hardcoded for now (move to remote config later)
+  NEW_WEIGHING_UI: false,
+  BATCH_WEIGHING: true,
+} as const;
+
+// Type-safe feature check
+export function isFeatureEnabled(feature: keyof typeof FeatureFlags): boolean {
+  return FeatureFlags[feature];
+}
+```
+
+### Usage in Components
+```typescript
+import { isFeatureEnabled } from '@/infrastructure/config/feature-flags';
+
+export default function WeighingScreen() {
+  return (
+    <View>
+      <WeightInput />
+      
+      {isFeatureEnabled('EXPORT_PDF') && (
+        <ExportButton format="pdf" />
+      )}
+      
+      {isFeatureEnabled('BATCH_WEIGHING') && (
+        <BatchWeighingButton />
+      )}
+    </View>
+  );
+}
+```
+
+## Secrets Management
+
+### DO NOT Commit Secrets
+```typescript
+// ❌ NEVER hardcode secrets
+const API_KEY = 'sk_live_abc123';
+
+// ✅ Use environment variables
+const API_KEY = process.env.API_KEY;
+
+// ✅ Or use secure storage for runtime secrets
+const API_KEY = await SecureStore.getItemAsync('api_key');
+```
+
+### Validate Required Config
+```typescript
+// src/infrastructure/config/validate-config.ts
+export function validateConfig(): void {
+  const required = [
+    'API_BASE_URL',
+  ];
+
+  const missing = required.filter(key => !process.env[key]);
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missing.join(', ')}`
+    );
+  }
+}
+
+// Call at app startup
+validateConfig();
+```
+
+## Debug Configuration
+
+### Development Tools
+```typescript
+// src/infrastructure/config/debug-config.ts
+import { config } from './app-config';
+
+export const DebugConfig = {
+  // Only in development
+  showNetworkLogs: config.isDev,
+  showDatabaseQueries: config.isDev,
+  mockApiResponses: false,
+  slowAnimations: false,
+  
+  // Performance monitoring
+  enableProfiler: config.isDev,
+  logRenderCount: false,
+};
+
+// Conditionally import debug tools
+if (config.isDev) {
+  // Enable Flipper, React DevTools, etc.
+}
+```

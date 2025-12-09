@@ -1,0 +1,474 @@
+---
+globs:
+  - "src/**/*"
+alwaysApply: false
+---
+
+# Preventing Race Conditions
+
+## What Are Race Conditions?
+
+Race conditions occur when:
+- Multiple operations access shared state concurrently
+- The final result depends on execution order
+- Operations that should be atomic are interrupted
+
+## Common Race Conditions in React Native
+
+### 1. Double Submit
+```typescript
+// ❌ BAD: Can submit multiple times
+const handleSave = async () => {
+  await saveWeight(weight);
+};
+
+// ✅ GOOD: Prevent double submit
+const [isSubmitting, setIsSubmitting] = useState(false);
+
+const handleSave = async () => {
+  if (isSubmitting) return;
+  
+  setIsSubmitting(true);
+  try {
+    await saveWeight(weight);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+// Disable button during submission
+<Button 
+  onPress={handleSave} 
+  disabled={isSubmitting}
+  title={isSubmitting ? 'Saving...' : 'Save'}
+/>
+```
+
+### 2. Stale Closure in useEffect
+```typescript
+// ❌ BAD: Stale state in async callback
+useEffect(() => {
+  async function loadData() {
+    const data = await fetchAnimals();
+    setAnimals(data);  // May update after component unmounts
+  }
+  loadData();
+}, []);
+
+// ✅ GOOD: Cancel on unmount
+useEffect(() => {
+  let isMounted = true;
+  
+  async function loadData() {
+    const data = await fetchAnimals();
+    if (isMounted) {
+      setAnimals(data);
+    }
+  }
+  
+  loadData();
+  
+  return () => {
+    isMounted = false;
+  };
+}, []);
+
+// ✅ BETTER: AbortController for fetch
+useEffect(() => {
+  const controller = new AbortController();
+  
+  async function loadData() {
+    try {
+      const data = await fetchAnimals({ signal: controller.signal });
+      setAnimals(data);
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setError(error);
+      }
+    }
+  }
+  
+  loadData();
+  
+  return () => controller.abort();
+}, []);
+```
+
+### 3. Search Debounce Race
+```typescript
+// ❌ BAD: Fast typing causes race condition
+const handleSearch = async (query: string) => {
+  const results = await searchAnimals(query);
+  setResults(results);  // Older request may finish after newer one
+};
+
+// ✅ GOOD: Cancel previous request
+const searchRef = useRef<AbortController | null>(null);
+
+const handleSearch = async (query: string) => {
+  // Cancel previous search
+  searchRef.current?.abort();
+  searchRef.current = new AbortController();
+  
+  try {
+    const results = await searchAnimals(query, {
+      signal: searchRef.current.signal
+    });
+    setResults(results);
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      setError(error);
+    }
+  }
+};
+
+// ✅ ALSO GOOD: Track request order
+const requestIdRef = useRef(0);
+
+const handleSearch = async (query: string) => {
+  const requestId = ++requestIdRef.current;
+  
+  const results = await searchAnimals(query);
+  
+  // Only update if this is still the latest request
+  if (requestId === requestIdRef.current) {
+    setResults(results);
+  }
+};
+```
+
+### 4. Navigation Race
+```typescript
+// ❌ BAD: Multiple navigations
+const handleSuccess = () => {
+  navigation.navigate('Home');
+  navigation.navigate('AnimalList');  // May cause issues
+};
+
+// ✅ GOOD: Navigate once, reset if needed
+const handleSuccess = () => {
+  navigation.reset({
+    index: 0,
+    routes: [{ name: 'Home' }, { name: 'AnimalList' }],
+  });
+};
+```
+
+## Database Race Conditions
+
+### 1. Read-Modify-Write
+```typescript
+// ❌ BAD: Race between read and write
+async incrementCount(animalId: string): Promise<void> {
+  const animal = await db.getFirstAsync('SELECT count FROM animals WHERE id = ?', [animalId]);
+  const newCount = (animal?.count ?? 0) + 1;
+  await db.runAsync('UPDATE animals SET count = ? WHERE id = ?', [newCount, animalId]);
+}
+
+// ✅ GOOD: Use transaction
+async incrementCount(animalId: string): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      'UPDATE animals SET count = count + 1 WHERE id = ?',
+      [animalId]
+    );
+  });
+}
+
+// ✅ ALSO GOOD: Atomic SQL operation
+async incrementCount(animalId: string): Promise<void> {
+  await db.runAsync(
+    'UPDATE animals SET count = count + 1, updated_at = ? WHERE id = ?',
+    [Date.now(), animalId]
+  );
+}
+```
+
+### 2. Duplicate Insert Prevention
+```typescript
+// ❌ BAD: Check then insert (race condition)
+async createAnimal(animal: Animal): Promise<void> {
+  const existing = await db.getFirstAsync(
+    'SELECT id FROM animals WHERE tag_number = ?',
+    [animal.tagNumber]
+  );
+  
+  if (existing) {
+    throw new DuplicateException('Tag number already exists');
+  }
+  
+  await db.runAsync('INSERT INTO animals ...', [...]);
+}
+
+// ✅ GOOD: Use UNIQUE constraint + handle error
+async createAnimal(animal: Animal): Promise<Result<void, Error>> {
+  try {
+    await db.runAsync(
+      'INSERT INTO animals (id, tag_number, ...) VALUES (?, ?, ...)',
+      [animal.id, animal.tagNumber, ...]
+    );
+    return Result.ok(undefined);
+  } catch (error) {
+    if (error.message.includes('UNIQUE constraint failed')) {
+      return Result.failure(new DuplicateException('Tag number already exists'));
+    }
+    throw error;
+  }
+}
+
+// ✅ ALSO GOOD: INSERT OR IGNORE / INSERT OR REPLACE
+await db.runAsync(
+  'INSERT OR IGNORE INTO animals (id, tag_number, ...) VALUES (?, ?, ...)',
+  [...]
+);
+```
+
+### 3. Optimistic Locking
+```typescript
+// For high-concurrency scenarios, use version column
+interface Animal {
+  id: string;
+  name: string;
+  version: number;  // Incremented on each update
+}
+
+async updateAnimal(animal: Animal): Promise<Result<void, Error>> {
+  const result = await db.runAsync(
+    `UPDATE animals 
+     SET name = ?, version = version + 1, updated_at = ?
+     WHERE id = ? AND version = ?`,
+    [animal.name, Date.now(), animal.id, animal.version]
+  );
+  
+  if (result.changes === 0) {
+    // Version mismatch - someone else updated
+    return Result.failure(new ConcurrentModificationException(
+      'Record was modified by another operation'
+    ));
+  }
+  
+  return Result.ok(undefined);
+}
+```
+
+## State Management Race Conditions
+
+### 1. MobX Async Actions
+```typescript
+// ❌ BAD: State update outside runInAction
+class AnimalStore {
+  @observable animals: Animal[] = [];
+  
+  async loadAnimals() {
+    const data = await fetchAnimals();
+    this.animals = data;  // Race condition!
+  }
+}
+
+// ✅ GOOD: Use runInAction
+import { runInAction } from 'mobx';
+
+class AnimalStore {
+  @observable animals: Animal[] = [];
+  
+  async loadAnimals() {
+    const data = await fetchAnimals();
+    runInAction(() => {
+      this.animals = data;
+    });
+  }
+}
+
+// ✅ ALSO GOOD: Use flow for generators
+import { flow } from 'mobx';
+
+class AnimalStore {
+  @observable animals: Animal[] = [];
+  
+  loadAnimals = flow(function* (this: AnimalStore) {
+    const data = yield fetchAnimals();
+    this.animals = data;  // Auto-wrapped in action
+  });
+}
+```
+
+### 2. Concurrent Load Prevention
+```typescript
+class AnimalListViewModel {
+  isLoading = false;
+  loadPromise: Promise<void> | null = null;
+
+  // Prevent concurrent loads
+  async loadAnimals(): Promise<void> {
+    if (this.loadPromise) {
+      return this.loadPromise;  // Return existing promise
+    }
+    
+    this.loadPromise = this._doLoad();
+    
+    try {
+      await this.loadPromise;
+    } finally {
+      this.loadPromise = null;
+    }
+  }
+
+  private async _doLoad(): Promise<void> {
+    runInAction(() => { this.isLoading = true; });
+    
+    try {
+      const animals = await this.repository.getAll();
+      runInAction(() => { this.animals = animals; });
+    } finally {
+      runInAction(() => { this.isLoading = false; });
+    }
+  }
+}
+```
+
+## Mutex / Lock Pattern
+
+### Simple Lock Implementation
+```typescript
+// src/shared/utils/mutex.ts
+export class Mutex {
+  private locked = false;
+  private queue: Array<() => void> = [];
+
+  async acquire(): Promise<void> {
+    if (!this.locked) {
+      this.locked = true;
+      return;
+    }
+
+    return new Promise<void>(resolve => {
+      this.queue.push(resolve);
+    });
+  }
+
+  release(): void {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift()!;
+      next();
+    } else {
+      this.locked = false;
+    }
+  }
+
+  async withLock<T>(operation: () => Promise<T>): Promise<T> {
+    await this.acquire();
+    try {
+      return await operation();
+    } finally {
+      this.release();
+    }
+  }
+}
+
+// Usage
+const saveMutex = new Mutex();
+
+async function saveWeight(weight: WeightRecord): Promise<void> {
+  await saveMutex.withLock(async () => {
+    await repository.save(weight);
+    await updateAnimalStats(weight.animalId);
+  });
+}
+```
+
+## Debounce & Throttle
+
+### Debounce for Input
+```typescript
+// src/shared/utils/debounce.ts
+export function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: NodeJS.Timeout | null = null;
+  
+  return (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    
+    timeoutId = setTimeout(() => {
+      func(...args);
+    }, wait);
+  };
+}
+
+// Usage: Search input
+const debouncedSearch = useMemo(
+  () => debounce((query: string) => viewModel.search(query), 300),
+  [viewModel]
+);
+
+<TextInput onChangeText={debouncedSearch} />
+```
+
+### Throttle for Frequent Events
+```typescript
+// src/shared/utils/throttle.ts
+export function throttle<T extends (...args: any[]) => any>(
+  func: T,
+  limit: number
+): (...args: Parameters<T>) => void {
+  let inThrottle = false;
+  
+  return (...args: Parameters<T>) => {
+    if (!inThrottle) {
+      func(...args);
+      inThrottle = true;
+      setTimeout(() => {
+        inThrottle = false;
+      }, limit);
+    }
+  };
+}
+
+// Usage: Scroll events
+const throttledScroll = useMemo(
+  () => throttle(handleScroll, 100),
+  [handleScroll]
+);
+```
+
+## Testing Race Conditions
+
+### Test Concurrent Operations
+```typescript
+describe('Race Condition Tests', () => {
+  it('should handle concurrent saves correctly', async () => {
+    const repository = new AnimalRepository(db);
+    const animal = createTestAnimal();
+    
+    // Simulate concurrent updates
+    await Promise.all([
+      repository.update({ ...animal, name: 'Name1' }),
+      repository.update({ ...animal, name: 'Name2' }),
+      repository.update({ ...animal, name: 'Name3' }),
+    ]);
+    
+    // Verify final state is consistent
+    const result = await repository.getById(animal.id);
+    expect(['Name1', 'Name2', 'Name3']).toContain(result?.name);
+  });
+  
+  it('should prevent double submit', async () => {
+    const saveFn = jest.fn();
+    const { getByTestId } = render(<SaveForm onSave={saveFn} />);
+    
+    const button = getByTestId('save-button');
+    
+    // Rapid clicks
+    fireEvent.press(button);
+    fireEvent.press(button);
+    fireEvent.press(button);
+    
+    await waitFor(() => {
+      expect(saveFn).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+```

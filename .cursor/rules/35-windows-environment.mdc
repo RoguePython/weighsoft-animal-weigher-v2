@@ -1,0 +1,424 @@
+---
+globs:
+alwaysApply: true
+---
+
+# Windows & PowerShell Environment
+
+## Critical: This Project Runs on Windows
+
+**Operating System**: Windows 10/11  
+**Shell**: PowerShell (not bash)  
+**Paths**: Windows-style (`C:\`, backslashes)
+
+---
+
+## Golden Rule: No Linux/Bash Commands
+
+**DON'T waste tokens** trying to run Linux or bash commands that won't work!
+
+### ❌ BAD (Will Fail)
+```bash
+# These are LINUX commands - DON'T USE
+ls -la
+chmod +x script.sh
+./gradlew assembleDebug
+rm -rf node_modules
+cat file.txt
+export NODE_ENV=production
+```
+
+### ✅ GOOD (PowerShell)
+```powershell
+# These are WINDOWS PowerShell commands - USE THESE
+Get-ChildItem
+# (PowerShell has no chmod - Windows uses different permissions)
+.\gradlew.bat assembleDebug
+Remove-Item -Recurse -Force node_modules
+Get-Content file.txt
+$env:NODE_ENV="production"
+```
+
+---
+
+## PowerShell Command Reference
+
+### File & Directory Operations
+
+| Task | ❌ Linux/Bash | ✅ PowerShell |
+|------|---------------|---------------|
+| **List files** | `ls` or `ls -la` | `Get-ChildItem` or `ls` |
+| **Change directory** | `cd /path` | `cd C:\path` |
+| **Create directory** | `mkdir folder` | `New-Item -ItemType Directory -Path folder` or `mkdir folder` |
+| **Remove file** | `rm file.txt` | `Remove-Item file.txt` |
+| **Remove directory** | `rm -rf folder` | `Remove-Item -Recurse -Force folder` |
+| **Copy file** | `cp src dest` | `Copy-Item src dest` |
+| **Move file** | `mv src dest` | `Move-Item src dest` |
+| **Read file** | `cat file.txt` | `Get-Content file.txt` |
+| **Write file** | `echo "text" > file` | `"text" | Out-File file.txt` |
+| **Find files** | `find . -name "*.ts"` | `Get-ChildItem -Recurse -Filter "*.ts"` |
+
+---
+
+### Environment Variables
+
+| Task | ❌ Linux/Bash | ✅ PowerShell |
+|------|---------------|---------------|
+| **Set variable** | `export VAR=value` | `$env:VAR="value"` |
+| **Get variable** | `echo $VAR` | `$env:VAR` or `Write-Host $env:VAR` |
+| **List all vars** | `env` | `Get-ChildItem Env:` |
+
+---
+
+### Process Management
+
+| Task | ❌ Linux/Bash | ✅ PowerShell |
+|------|---------------|---------------|
+| **Kill process** | `kill -9 1234` | `Stop-Process -Id 1234 -Force` |
+| **List processes** | `ps aux` | `Get-Process` |
+| **Find process** | `ps aux | grep node` | `Get-Process | Where-Object {$_.Name -like "*node*"}` |
+
+---
+
+### Package Management
+
+| Task | Command | Notes |
+|------|---------|-------|
+| **npm install** | `npm install` | ✅ Works on Windows |
+| **npm run** | `npm run dev` | ✅ Works on Windows |
+| **npx** | `npx expo start` | ✅ Works on Windows |
+| **yarn** | `yarn install` | ✅ Works on Windows |
+
+---
+
+## Path Handling
+
+### Windows Paths
+
+```powershell
+# Correct Windows paths
+C:\Project\WeighsoftAnimalWeigherV2
+C:\Users\username\AppData
+.\src\domain\entities
+
+# In code, use forward slashes or escaped backslashes
+"C:\\Project\\WeighsoftAnimalWeigherV2"
+"C:/Project/WeighsoftAnimalWeigherV2"  # Also works
+```
+
+### Path Separators
+
+```typescript
+// ✅ GOOD: Use path module
+import path from 'path';
+const fullPath = path.join('C:', 'Project', 'src', 'domain');
+
+// ❌ BAD: Hardcoded separators
+const fullPath = 'C:/Project/src/domain';  // Works but not ideal
+```
+
+---
+
+## Gradle on Windows
+
+### Always Use .bat Files
+
+```powershell
+# ✅ GOOD: Windows batch file
+cd android
+.\gradlew.bat assembleDebug
+.\gradlew.bat clean
+
+# ❌ BAD: Linux shell script
+./gradlew assembleDebug  # Won't work on Windows!
+```
+
+### Common Gradle Commands
+
+```powershell
+# Build debug APK
+.\gradlew.bat assembleDebug
+
+# Build release APK
+.\gradlew.bat assembleRelease
+
+# Clean build
+.\gradlew.bat clean
+
+# List tasks
+.\gradlew.bat tasks
+```
+
+---
+
+## Script Execution
+
+### PowerShell Script Execution Policy
+
+```powershell
+# Check current policy
+Get-ExecutionPolicy
+
+# Allow local scripts (if needed)
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# Run a script
+.\script.ps1
+```
+
+### Batch Files vs PowerShell
+
+```powershell
+# Batch file (.bat or .cmd)
+.\build.bat
+
+# PowerShell script (.ps1)
+.\build.ps1
+
+# Node/npm scripts always work
+npm run build
+```
+
+---
+
+## Terminal Commands to Use
+
+### Safe Cross-Platform Commands
+
+These work on Windows without modification:
+
+```powershell
+# Node/npm
+npm install
+npm run dev
+npm test
+node script.js
+
+# Git
+git status
+git add .
+git commit -m "message"
+git push
+
+# TypeScript
+tsc --noEmit
+tsc --build
+
+# React Native / Expo
+npx expo start
+npx react-native run-android
+```
+
+---
+
+## Common Mistakes to Avoid
+
+### 1. Using Linux-style Paths
+
+```typescript
+// ❌ BAD
+const path = '/home/user/project';
+
+// ✅ GOOD
+const path = 'C:\\Users\\user\\project';
+// or
+const path = path.join(process.cwd(), 'project');
+```
+
+---
+
+### 2. Using Bash-specific Syntax
+
+```powershell
+# ❌ BAD (bash)
+export NODE_ENV=production && npm start
+
+# ✅ GOOD (PowerShell)
+$env:NODE_ENV="production"; npm start
+```
+
+---
+
+### 3. Assuming Executable Permissions
+
+```powershell
+# ❌ BAD (Linux only)
+chmod +x script.sh
+./script.sh
+
+# ✅ GOOD (Windows doesn't need chmod)
+.\script.bat
+# or
+.\script.ps1
+```
+
+---
+
+### 4. Using Forward Slashes in Commands
+
+```powershell
+# ❌ BAD
+cd ./src/domain
+
+# ✅ GOOD
+cd .\src\domain
+# or
+cd src\domain
+```
+
+---
+
+## AI Assistant Guidelines
+
+### Before Running Terminal Commands
+
+1. **Check if it's a bash command** → Convert to PowerShell
+2. **Check if it's Linux-specific** → Use Windows equivalent
+3. **Check if it's cross-platform** (npm, git) → Use as-is
+
+### Quick Check Table
+
+| Command Type | Can Use? | Notes |
+|--------------|----------|-------|
+| `npm`, `yarn` | ✅ Yes | Cross-platform |
+| `git` | ✅ Yes | Cross-platform |
+| `node` | ✅ Yes | Cross-platform |
+| `tsc` | ✅ Yes | Cross-platform |
+| `ls`, `cd`, `mkdir` | ✅ Yes | PowerShell aliases |
+| `chmod`, `chown` | ❌ No | Linux only |
+| `./gradlew` | ❌ No | Use `.\gradlew.bat` |
+| `export VAR=val` | ❌ No | Use `$env:VAR="val"` |
+| `cat`, `grep`, `awk` | ❌ No | Use PowerShell equivalents |
+
+---
+
+## Recommended Terminal Commands
+
+### Use These Safely
+
+```powershell
+# Package management
+npm install
+npm run dev
+npm test
+npm run build
+
+# Git operations
+git status
+git add .
+git commit -m "message"
+git pull
+git push
+
+# TypeScript
+npm run type-check
+tsc --noEmit
+
+# Linting
+npm run lint
+npm run lint:fix
+
+# React Native
+npm start
+npm run android
+npm run ios
+
+# Android builds
+cd android
+.\gradlew.bat assembleDebug
+cd ..
+```
+
+---
+
+## Environment-Specific Files
+
+### package.json Scripts
+
+```json
+{
+  "scripts": {
+    "dev": "expo start",
+    "android": "expo run:android",
+    "build:android": "cd android && .\\gradlew.bat assembleDebug",
+    "clean:android": "cd android && .\\gradlew.bat clean"
+  }
+}
+```
+
+**Note**: Use `&&` for chaining, works in both cmd and PowerShell.
+
+---
+
+## File Line Endings
+
+### CRLF vs LF
+
+**Windows uses CRLF** (`\r\n`) line endings.
+
+```bash
+# Configure Git to handle line endings
+git config --global core.autocrlf true
+```
+
+This prevents issues when collaborating with Linux/Mac developers.
+
+---
+
+## Summary
+
+### Do's ✅
+- ✅ Use PowerShell commands or cross-platform tools (npm, git)
+- ✅ Use `.\gradlew.bat` for Android builds
+- ✅ Use `$env:VAR="value"` for environment variables
+- ✅ Use Windows-style paths (`C:\Project\...`)
+- ✅ Check command compatibility before running
+
+### Don'ts ❌
+- ❌ Don't use bash-specific commands (`export`, `chmod`, etc.)
+- ❌ Don't use Linux paths (`/home/user/...`)
+- ❌ Don't use `./gradlew` (use `.\gradlew.bat`)
+- ❌ Don't assume Linux tools are available
+- ❌ Don't waste tokens on commands that won't work
+
+---
+
+## Quick Conversion Guide
+
+When you see a Linux command, convert it:
+
+```bash
+# Linux
+export NODE_ENV=production
+npm start
+
+# Windows PowerShell
+$env:NODE_ENV="production"
+npm start
+```
+
+```bash
+# Linux
+chmod +x ./gradlew
+./gradlew assembleDebug
+
+# Windows PowerShell
+# (no chmod needed)
+.\gradlew.bat assembleDebug
+```
+
+```bash
+# Linux
+rm -rf node_modules
+npm install
+
+# Windows PowerShell
+Remove-Item -Recurse -Force node_modules
+npm install
+```
+
+---
+
+**Remember**: When in doubt, use cross-platform tools (npm, git, node) or ask the user! 🪟
+
+*This is a Windows project. Respect the platform.* 💻

@@ -1,0 +1,225 @@
+---
+globs:
+  - "src/**/*"
+alwaysApply: false
+---
+
+# Error Handling Standards
+
+## Error Hierarchy
+
+### Domain Exceptions
+```typescript
+// src/domain/exceptions/base.exception.ts
+export abstract class DomainException extends Error {
+  abstract readonly code: string;
+  
+  constructor(message: string, public readonly cause?: Error) {
+    super(message);
+    this.name = this.constructor.name;
+  }
+}
+
+// src/domain/exceptions/animal.exceptions.ts
+export class AnimalNotFoundException extends DomainException {
+  readonly code = 'ANIMAL_NOT_FOUND';
+  
+  constructor(id: string) {
+    super(`Animal with id '${id}' was not found`);
+  }
+}
+
+export class InvalidWeightException extends DomainException {
+  readonly code = 'INVALID_WEIGHT';
+  
+  constructor(weight: number) {
+    super(`Weight '${weight}' is invalid. Must be positive number.`);
+  }
+}
+```
+
+### Infrastructure Exceptions
+```typescript
+// src/infrastructure/exceptions/database.exceptions.ts
+export class DatabaseException extends Error {
+  constructor(
+    message: string,
+    public readonly operation: string,
+    public readonly cause?: Error
+  ) {
+    super(message);
+    this.name = 'DatabaseException';
+  }
+}
+
+export class MigrationException extends DatabaseException {
+  constructor(version: number, cause?: Error) {
+    super(
+      `Failed to run migration version ${version}`,
+      'migration',
+      cause
+    );
+  }
+}
+```
+
+## Error Handling Patterns
+
+### Use Case Level
+```typescript
+export class GetAnimalUseCase {
+  async execute(id: string): Promise<Result<Animal, DomainException>> {
+    try {
+      const animal = await this.repository.getById(id);
+      if (!animal) {
+        return Result.failure(new AnimalNotFoundException(id));
+      }
+      return Result.ok(animal);
+    } catch (error) {
+      // Wrap unexpected errors
+      return Result.failure(
+        new UnexpectedDomainException('Failed to get animal', error)
+      );
+    }
+  }
+}
+```
+
+### Result Type Pattern
+```typescript
+// src/shared/types/result.ts
+export type Result<T, E extends Error = Error> = 
+  | { success: true; data: T }
+  | { success: false; error: E };
+
+export const Result = {
+  ok: <T>(data: T): Result<T, never> => ({ success: true, data }),
+  failure: <E extends Error>(error: E): Result<never, E> => ({ 
+    success: false, 
+    error 
+  }),
+};
+
+// Usage
+const result = await useCase.execute(id);
+if (result.success) {
+  console.log(result.data);
+} else {
+  console.error(result.error.message);
+}
+```
+
+### ViewModel Level
+```typescript
+export class AnimalDetailViewModel {
+  @observable error: string | null = null;
+  @observable isLoading = false;
+
+  async loadAnimal(id: string) {
+    this.isLoading = true;
+    this.error = null;
+    
+    try {
+      const result = await this.getAnimalUseCase.execute(id);
+      
+      if (!result.success) {
+        this.error = this.mapErrorToMessage(result.error);
+        return;
+      }
+      
+      this.animal = result.data;
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  private mapErrorToMessage(error: DomainException): string {
+    switch (error.code) {
+      case 'ANIMAL_NOT_FOUND':
+        return 'Animal not found. It may have been deleted.';
+      case 'INVALID_WEIGHT':
+        return 'Please enter a valid weight.';
+      default:
+        return 'An unexpected error occurred. Please try again.';
+    }
+  }
+}
+```
+
+## User-Facing Error Messages
+
+### Guidelines
+- Never show technical details to users
+- Provide actionable guidance when possible
+- Log technical details for debugging
+
+```typescript
+// ✅ GOOD: User-friendly message
+"Unable to save weight. Please check your connection and try again."
+
+// ❌ BAD: Technical message
+"DatabaseException: SQLITE_CONSTRAINT: UNIQUE constraint failed"
+```
+
+## Logging
+
+### Log Levels
+```typescript
+// src/shared/utils/logger.ts
+export const logger = {
+  debug: (message: string, data?: object) => {
+    if (__DEV__) {
+      console.log(`[DEBUG] ${message}`, data);
+    }
+  },
+  
+  info: (message: string, data?: object) => {
+    console.log(`[INFO] ${message}`, data);
+  },
+  
+  warn: (message: string, data?: object) => {
+    console.warn(`[WARN] ${message}`, data);
+  },
+  
+  error: (message: string, error?: Error, data?: object) => {
+    console.error(`[ERROR] ${message}`, { error, ...data });
+    // In production, send to error tracking service
+  },
+};
+```
+
+### What to Log
+```typescript
+// ✅ Log: Unexpected errors with context
+logger.error('Failed to save animal', error, { animalId, userId });
+
+// ✅ Log: Important state changes
+logger.info('Animal weight recorded', { animalId, weight });
+
+// ❌ Don't log: Sensitive data
+logger.debug('User data', { password, ssn }); // NEVER
+```
+
+## Testing Error Scenarios
+
+```typescript
+describe('GetAnimalUseCase', () => {
+  it('should return failure when animal not found', async () => {
+    mockRepository.getById.mockResolvedValue(null);
+    
+    const result = await useCase.execute('non-existent-id');
+    
+    expect(result.success).toBe(false);
+    expect(result.error).toBeInstanceOf(AnimalNotFoundException);
+  });
+
+  it('should wrap database errors', async () => {
+    mockRepository.getById.mockRejectedValue(new Error('DB Error'));
+    
+    const result = await useCase.execute('123');
+    
+    expect(result.success).toBe(false);
+    expect(result.error.cause?.message).toBe('DB Error');
+  });
+});
+```

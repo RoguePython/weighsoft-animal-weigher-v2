@@ -1,0 +1,118 @@
+---
+globs:
+alwaysApply: true
+---
+
+# Development Workflow Rules
+
+## The Golden Workflow
+
+### Before Starting Any Task
+1. **Update todo.md** - Add task to the todo list
+2. **Read existing docs** - Check docs/ for relevant documentation
+3. **Understand the architecture** - Review affected layers
+
+### During Development
+1. **Write tests first** (TDD when possible)
+2. **Implement in small increments**
+3. **Document as you go** - Update docs if adding new patterns
+4. **Verify APK builds frequently** - Don't wait until the end!
+
+### After Completing Changes
+1. **Run all tests**
+   ```bash
+   npm test                 # Unit tests
+   npm run test:e2e         # E2E tests
+   ```
+2. **Verify APK builds**
+   ```bash
+   cd android
+   ./gradlew assembleDebug
+   ```
+3. **Bump version** (if significant change)
+4. **Git commit** with meaningful message
+5. **Update todo.md** - Mark task complete
+
+## Version Management
+
+### Semantic Versioning
+```
+MAJOR.MINOR.PATCH
+  │     │     └── Bug fixes, small changes
+  │     └──────── New features, backwards compatible
+  └────────────── Breaking changes
+```
+
+### Version Locations
+Update these files when bumping version:
+- `package.json` - `version` field
+- `android/app/build.gradle` - `versionCode` and `versionName`
+- `ios/[AppName]/Info.plist` - `CFBundleShortVersionString` and `CFBundleVersion`
+
+## Git Commit Guidelines
+
+### Commit Message Format
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### Types
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation only
+- `style`: Code style (formatting, semicolons, etc.)
+- `refactor`: Code change that neither fixes bug nor adds feature
+- `test`: Adding or updating tests
+- `chore`: Build process, dependencies, etc.
+
+### Examples
+```bash
+feat(weighing): add weight history screen
+
+- Implemented weight history list
+- Added date filtering
+- Created WeightHistoryViewModel
+
+Closes #123
+```
+
+```bash
+fix(database): prevent duplicate weight records
+
+Fixed race condition when saving weight records
+that could result in duplicates.
+```
+
+## Build Verification Checkpoints
+
+### When to Verify APK Builds
+- ✅ After adding new dependencies
+- ✅ After modifying native code
+- ✅ After significant feature completion
+- ✅ Before creating pull requests
+- ✅ At least once per day during active development
+
+### Build Commands
+```bash
+# Debug APK
+cd android && ./gradlew assembleDebug
+
+# Release APK
+cd android && ./gradlew assembleRelease
+
+# Check for build issues without full build
+cd android && ./gradlew tasks --all
+```
+
+## Code Review Checklist
+- [ ] Tests added/updated
+- [ ] Documentation updated
+- [ ] No console.log statements
+- [ ] No commented-out code
+- [ ] Follows coding standards
+- [ ] APK builds successfully
+- [ ] todo.md updated

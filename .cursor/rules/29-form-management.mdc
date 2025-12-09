@@ -1,0 +1,618 @@
+---
+globs:
+  - "src/presentation/**/*"
+  - "**/*form*.tsx"
+alwaysApply: false
+---
+
+# Form Management Rules
+
+## Form Library Choice
+
+### React Hook Form (Recommended)
+```bash
+npm install react-hook-form
+# For validation
+npm install yup @hookform/resolvers
+```
+
+## Basic Form Setup
+
+### Simple Form with Validation
+```typescript
+// src/presentation/screens/animal-form.screen.tsx
+import { useForm, Controller } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
+import * as yup from 'yup';
+
+// Validation schema
+const animalSchema = yup.object({
+  name: yup
+    .string()
+    .required('Name is required')
+    .min(2, 'Name must be at least 2 characters'),
+  species: yup
+    .string()
+    .required('Species is required'),
+  weight: yup
+    .number()
+    .positive('Weight must be positive')
+    .max(10000, 'Weight seems too large'),
+  tagNumber: yup
+    .string()
+    .optional()
+    .matches(/^[A-Z0-9-]+$/, 'Invalid tag format'),
+}).required();
+
+type AnimalFormData = yup.InferType<typeof animalSchema>;
+
+export const AnimalFormScreen: React.FC = () => {
+  const {
+    control,
+    handleSubmit,
+    formState: { errors, isSubmitting, isDirty },
+    reset,
+  } = useForm<AnimalFormData>({
+    resolver: yupResolver(animalSchema),
+    defaultValues: {
+      name: '',
+      species: '',
+      weight: 0,
+      tagNumber: '',
+    },
+  });
+
+  const onSubmit = async (data: AnimalFormData) => {
+    try {
+      await saveAnimal(data);
+      reset();
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save animal');
+    }
+  };
+
+  return (
+    <ScrollView style={styles.container}>
+      {/* Name Field */}
+      <Controller
+        control={control}
+        name="name"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextInput
+            label="Animal Name"
+            value={value}
+            onChangeText={onChange}
+            onBlur={onBlur}
+            error={errors.name?.message}
+            placeholder="Enter animal name"
+          />
+        )}
+      />
+
+      {/* Species Field */}
+      <Controller
+        control={control}
+        name="species"
+        render={({ field: { onChange, value } }) => (
+          <Picker
+            label="Species"
+            selectedValue={value}
+            onValueChange={onChange}
+            error={errors.species?.message}
+            items={[
+              { label: 'Cattle', value: 'cattle' },
+              { label: 'Sheep', value: 'sheep' },
+              { label: 'Pig', value: 'pig' },
+            ]}
+          />
+        )}
+      />
+
+      {/* Weight Field */}
+      <Controller
+        control={control}
+        name="weight"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextInput
+            label="Weight (kg)"
+            value={value.toString()}
+            onChangeText={(text) => onChange(parseFloat(text) || 0)}
+            onBlur={onBlur}
+            error={errors.weight?.message}
+            keyboardType="decimal-pad"
+          />
+        )}
+      />
+
+      {/* Submit Button */}
+      <Button
+        title={isSubmitting ? 'Saving...' : 'Save Animal'}
+        onPress={handleSubmit(onSubmit)}
+        disabled={isSubmitting || !isDirty}
+      />
+    </ScrollView>
+  );
+};
+```
+
+## Reusable Form Components
+
+### Controlled Text Input
+```typescript
+// src/presentation/components/form/controlled-text-input.tsx
+import { useController } from 'react-hook-form';
+
+interface ControlledTextInputProps {
+  control: Control<any>;
+  name: string;
+  label: string;
+  placeholder?: string;
+  keyboardType?: KeyboardTypeOptions;
+  secureTextEntry?: boolean;
+  multiline?: boolean;
+  rules?: object;
+}
+
+export const ControlledTextInput: React.FC<ControlledTextInputProps> = ({
+  control,
+  name,
+  label,
+  ...props
+}) => {
+  const {
+    field: { onChange, onBlur, value },
+    fieldState: { error },
+  } = useController({
+    control,
+    name,
+    rules: props.rules,
+  });
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        onBlur={onBlur}
+        style={[styles.input, error && styles.inputError]}
+        {...props}
+      />
+      {error && (
+        <Text style={styles.errorText}>{error.message}</Text>
+      )}
+    </View>
+  );
+};
+```
+
+### Controlled Picker
+```typescript
+// src/presentation/components/form/controlled-picker.tsx
+interface ControlledPickerProps {
+  control: Control<any>;
+  name: string;
+  label: string;
+  items: Array<{ label: string; value: string }>;
+}
+
+export const ControlledPicker: React.FC<ControlledPickerProps> = ({
+  control,
+  name,
+  label,
+  items,
+}) => {
+  const {
+    field: { onChange, value },
+    fieldState: { error },
+  } = useController({ control, name });
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.label}>{label}</Text>
+      <Picker
+        selectedValue={value}
+        onValueChange={onChange}
+        style={[styles.picker, error && styles.pickerError]}
+      >
+        <Picker.Item label="Select..." value="" />
+        {items.map((item) => (
+          <Picker.Item
+            key={item.value}
+            label={item.label}
+            value={item.value}
+          />
+        ))}
+      </Picker>
+      {error && <Text style={styles.errorText}>{error.message}</Text>}
+    </View>
+  );
+};
+```
+
+### Controlled Switch
+```typescript
+interface ControlledSwitchProps {
+  control: Control<any>;
+  name: string;
+  label: string;
+}
+
+export const ControlledSwitch: React.FC<ControlledSwitchProps> = ({
+  control,
+  name,
+  label,
+}) => {
+  const { field: { onChange, value } } = useController({ control, name });
+
+  return (
+    <View style={styles.switchContainer}>
+      <Text style={styles.label}>{label}</Text>
+      <Switch value={value} onValueChange={onChange} />
+    </View>
+  );
+};
+```
+
+## Complex Validation
+
+### Cross-Field Validation
+```typescript
+const weightRecordSchema = yup.object({
+  weight: yup.number().required().positive(),
+  recordedAt: yup.date().required(),
+  previousWeight: yup.number().optional(),
+}).test(
+  'weight-change',
+  'Weight change is suspiciously large',
+  function (values) {
+    const { weight, previousWeight } = values;
+    if (!previousWeight) return true;
+    
+    const percentChange = Math.abs((weight - previousWeight) / previousWeight);
+    if (percentChange > 0.5) {
+      return this.createError({
+        path: 'weight',
+        message: 'Weight changed more than 50%, please verify',
+      });
+    }
+    return true;
+  }
+);
+```
+
+### Async Validation
+```typescript
+const animalSchema = yup.object({
+  tagNumber: yup
+    .string()
+    .required()
+    .test('unique-tag', 'Tag number already exists', async (value) => {
+      if (!value) return true;
+      const exists = await checkTagNumberExists(value);
+      return !exists;
+    }),
+});
+```
+
+### Conditional Validation
+```typescript
+const animalSchema = yup.object({
+  species: yup.string().required(),
+  breed: yup.string().when('species', {
+    is: 'cattle',
+    then: (schema) => schema.required('Breed is required for cattle'),
+    otherwise: (schema) => schema.optional(),
+  }),
+});
+```
+
+## Dynamic Fields
+
+### Array Fields
+```typescript
+// Form with multiple weight entries
+interface WeightEntry {
+  date: Date;
+  weight: number;
+}
+
+const { control, handleSubmit } = useForm<{
+  entries: WeightEntry[];
+}>({
+  defaultValues: {
+    entries: [{ date: new Date(), weight: 0 }],
+  },
+});
+
+const { fields, append, remove } = useFieldArray({
+  control,
+  name: 'entries',
+});
+
+return (
+  <View>
+    {fields.map((field, index) => (
+      <View key={field.id}>
+        <Controller
+          control={control}
+          name={`entries.${index}.weight`}
+          render={({ field }) => (
+            <TextInput {...field} placeholder="Weight" />
+          )}
+        />
+        <Button title="Remove" onPress={() => remove(index)} />
+      </View>
+    ))}
+    <Button
+      title="Add Entry"
+      onPress={() => append({ date: new Date(), weight: 0 })}
+    />
+  </View>
+);
+```
+
+## Form State Management
+
+### Watch Field Values
+```typescript
+const { control, watch } = useForm();
+
+// Watch single field
+const species = watch('species');
+
+// Watch multiple fields
+const [name, species] = watch(['name', 'species']);
+
+// Watch all fields
+const formValues = watch();
+
+// Show/hide fields based on other fields
+{species === 'cattle' && (
+  <Controller
+    control={control}
+    name="breed"
+    render={({ field }) => <TextInput {...field} />}
+  />
+)}
+```
+
+### Reset Form
+```typescript
+const { reset } = useForm();
+
+// Reset to default values
+reset();
+
+// Reset to specific values
+reset({
+  name: 'New Animal',
+  species: 'cattle',
+});
+
+// Reset single field
+setValue('name', 'New Value');
+```
+
+### Trigger Validation
+```typescript
+const { trigger } = useForm();
+
+// Validate all fields
+const isValid = await trigger();
+
+// Validate specific field
+const isNameValid = await trigger('name');
+
+// Validate multiple fields
+const areValid = await trigger(['name', 'species']);
+```
+
+## Form Persistence
+
+### Auto-Save Draft
+```typescript
+export const useFormPersistence = (
+  key: string,
+  form: UseFormReturn<any>
+) => {
+  const { watch } = form;
+
+  // Save on change
+  useEffect(() => {
+    const subscription = watch((values) => {
+      AsyncStorage.setItem(key, JSON.stringify(values));
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, key]);
+
+  // Load on mount
+  useEffect(() => {
+    AsyncStorage.getItem(key).then((saved) => {
+      if (saved) {
+        form.reset(JSON.parse(saved));
+      }
+    });
+  }, [key]);
+
+  // Clear on submit
+  const clearDraft = () => AsyncStorage.removeItem(key);
+
+  return { clearDraft };
+};
+
+// Usage
+const form = useForm();
+const { clearDraft } = useFormPersistence('animal-form-draft', form);
+
+const onSubmit = async (data) => {
+  await saveAnimal(data);
+  clearDraft();
+};
+```
+
+## Form ViewModel Pattern
+
+### Centralized Form Logic
+```typescript
+// src/presentation/viewmodels/animal-form.viewmodel.ts
+export class AnimalFormViewModel {
+  private form: UseFormReturn<AnimalFormData>;
+
+  constructor(
+    private readonly saveAnimalUseCase: SaveAnimalUseCase,
+    existingAnimal?: Animal
+  ) {
+    this.form = useForm<AnimalFormData>({
+      resolver: yupResolver(animalSchema),
+      defaultValues: existingAnimal
+        ? this.mapAnimalToForm(existingAnimal)
+        : this.getDefaultValues(),
+    });
+  }
+
+  get control() {
+    return this.form.control;
+  }
+
+  get errors() {
+    return this.form.formState.errors;
+  }
+
+  get isValid() {
+    return this.form.formState.isValid;
+  }
+
+  get isDirty() {
+    return this.form.formState.isDirty;
+  }
+
+  handleSubmit = this.form.handleSubmit(async (data) => {
+    const result = await this.saveAnimalUseCase.execute(
+      this.mapFormToAnimal(data)
+    );
+
+    if (!result.success) {
+      throw result.error;
+    }
+
+    return result.data;
+  });
+
+  private mapAnimalToForm(animal: Animal): AnimalFormData {
+    return {
+      name: animal.name,
+      species: animal.species,
+      weight: animal.currentWeight ?? 0,
+    };
+  }
+
+  private mapFormToAnimal(data: AnimalFormData): Animal {
+    return {
+      id: generateId(),
+      name: data.name,
+      species: data.species,
+      currentWeight: data.weight,
+    };
+  }
+
+  private getDefaultValues(): AnimalFormData {
+    return {
+      name: '',
+      species: '',
+      weight: 0,
+    };
+  }
+}
+```
+
+## Error Handling
+
+### Display Server Errors
+```typescript
+const onSubmit = async (data) => {
+  try {
+    await saveAnimal(data);
+  } catch (error) {
+    if (error.code === 'VALIDATION_ERROR') {
+      // Set field errors from server
+      Object.entries(error.fields).forEach(([field, message]) => {
+        setError(field, { message });
+      });
+    } else {
+      Alert.alert('Error', error.message);
+    }
+  }
+};
+```
+
+### Manual Field Errors
+```typescript
+const { setError, clearErrors } = useForm();
+
+// Set error
+setError('tagNumber', {
+  type: 'manual',
+  message: 'This tag is already in use',
+});
+
+// Clear error
+clearErrors('tagNumber');
+
+// Clear all errors
+clearErrors();
+```
+
+## Best Practices
+
+### DO
+- ✅ Use schema validation (Yup/Zod)
+- ✅ Show validation errors immediately
+- ✅ Disable submit while invalid or submitting
+- ✅ Provide helpful error messages
+- ✅ Use appropriate keyboard types
+- ✅ Reset form after successful submit
+- ✅ Auto-focus first field
+- ✅ Handle unsaved changes warning
+
+### DON'T
+- ❌ Validate on every keystroke (use onBlur)
+- ❌ Show errors before user interaction
+- ❌ Use generic error messages
+- ❌ Submit invalid forms
+- ❌ Forget loading states
+- ❌ Ignore accessibility
+
+## Unsaved Changes Warning
+
+### Warn Before Navigation
+```typescript
+export const useFormUnsavedWarning = (isDirty: boolean) => {
+  useFocusEffect(
+    useCallback(() => {
+      const beforeRemove = (e: any) => {
+        if (!isDirty) return;
+
+        e.preventDefault();
+
+        Alert.alert(
+          'Discard changes?',
+          'You have unsaved changes. Are you sure you want to leave?',
+          [
+            { text: 'Stay', style: 'cancel' },
+            {
+              text: 'Discard',
+              style: 'destructive',
+              onPress: () => navigation.dispatch(e.data.action),
+            },
+          ]
+        );
+      };
+
+      navigation.addListener('beforeRemove', beforeRemove);
+      return () => navigation.removeListener('beforeRemove', beforeRemove);
+    }, [isDirty, navigation])
+  );
+};
+```

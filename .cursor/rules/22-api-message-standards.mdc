@@ -1,0 +1,361 @@
+---
+globs:
+  - "src/**/*"
+alwaysApply: false
+---
+
+# API & Message Standards
+
+## API Response Format
+
+### Standard Response Structure
+```typescript
+// src/shared/types/api-response.ts
+
+// Success response
+interface ApiSuccessResponse<T> {
+  success: true;
+  data: T;
+  meta?: {
+    page?: number;
+    pageSize?: number;
+    total?: number;
+    timestamp: string;
+  };
+}
+
+// Error response
+interface ApiErrorResponse {
+  success: false;
+  error: {
+    code: string;           // Machine-readable code
+    message: string;        // Human-readable message
+    details?: unknown;      // Additional error details
+    field?: string;         // For validation errors
+  };
+  meta?: {
+    timestamp: string;
+    requestId?: string;
+  };
+}
+
+type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
+```
+
+### Example Responses
+```typescript
+// Success: Single item
+{
+  "success": true,
+  "data": {
+    "id": "animal-123",
+    "name": "Bessie",
+    "species": "cattle",
+    "currentWeight": 450.5
+  },
+  "meta": {
+    "timestamp": "2024-12-09T10:30:00Z"
+  }
+}
+
+// Success: List with pagination
+{
+  "success": true,
+  "data": [
+    { "id": "animal-123", "name": "Bessie" },
+    { "id": "animal-456", "name": "Duke" }
+  ],
+  "meta": {
+    "page": 1,
+    "pageSize": 20,
+    "total": 150,
+    "timestamp": "2024-12-09T10:30:00Z"
+  }
+}
+
+// Error: Validation
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Weight must be a positive number",
+    "field": "weight"
+  },
+  "meta": {
+    "timestamp": "2024-12-09T10:30:00Z"
+  }
+}
+
+// Error: Not found
+{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Animal with ID 'animal-999' not found"
+  }
+}
+```
+
+## Error Codes
+
+### Standard Error Codes
+```typescript
+// src/shared/constants/error-codes.ts
+export const ERROR_CODES = {
+  // Client errors (4xx equivalent)
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  NOT_FOUND: 'NOT_FOUND',
+  ALREADY_EXISTS: 'ALREADY_EXISTS',
+  INVALID_INPUT: 'INVALID_INPUT',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
+  CONFLICT: 'CONFLICT',
+  
+  // Server errors (5xx equivalent)
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  DATABASE_ERROR: 'DATABASE_ERROR',
+  SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
+  
+  // Business logic errors
+  WEIGHT_OUT_OF_RANGE: 'WEIGHT_OUT_OF_RANGE',
+  ANIMAL_NOT_FOUND: 'ANIMAL_NOT_FOUND',
+  DUPLICATE_RECORD: 'DUPLICATE_RECORD',
+  OPERATION_NOT_ALLOWED: 'OPERATION_NOT_ALLOWED',
+} as const;
+
+export type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES];
+```
+
+## Naming Conventions (Comprehensive)
+
+### File & Folder Naming
+| Type | Convention | Example |
+|------|------------|---------|
+| Files | kebab-case | `animal-repository.ts` |
+| React Components | PascalCase.tsx | `AnimalCard.tsx` |
+| Test files | .test.ts / .spec.ts | `animal.repository.test.ts` |
+| Type files | .types.ts | `animal.types.ts` |
+| Constants | .constants.ts | `api.constants.ts` |
+| Hooks | use-*.ts | `use-animal-list.ts` |
+
+### Code Naming
+| Type | Convention | Example |
+|------|------------|---------|
+| Classes | PascalCase | `AnimalRepository` |
+| Interfaces | IPascalCase (contracts) | `IAnimalRepository` |
+| Types | PascalCase | `AnimalWeight` |
+| Functions | camelCase | `calculateWeight()` |
+| Variables | camelCase | `animalList` |
+| Constants | UPPER_SNAKE | `MAX_WEIGHT_KG` |
+| Enums | PascalCase | `WeightUnit` |
+| Enum values | PascalCase | `WeightUnit.Kilogram` |
+| Private | _prefixed | `_privateMethod()` |
+| Boolean | is/has/can prefix | `isLoading`, `hasError` |
+| Arrays | plural | `animals`, `weightRecords` |
+| Handlers | handle* | `handlePress`, `handleSubmit` |
+| Callbacks | on* | `onPress`, `onSubmit` |
+
+### Database Naming
+| Type | Convention | Example |
+|------|------------|---------|
+| Tables | snake_case (plural) | `weight_records` |
+| Columns | snake_case | `animal_id`, `created_at` |
+| Primary keys | id | `id` |
+| Foreign keys | {table}_id | `animal_id` |
+| Indexes | idx_{table}_{columns} | `idx_weights_animal_date` |
+| Timestamps | *_at | `created_at`, `updated_at` |
+| Booleans | is_* / has_* | `is_active`, `has_photo` |
+
+### API Naming
+| Type | Convention | Example |
+|------|------------|---------|
+| Endpoints | kebab-case | `/api/weight-records` |
+| Query params | camelCase | `?pageSize=20&sortBy=date` |
+| Request body | camelCase | `{ animalId, weight }` |
+| Response body | camelCase | `{ animalId, weightKg }` |
+
+## Message Types
+
+### User-Facing Messages
+```typescript
+// src/shared/constants/messages.ts
+export const MESSAGES = {
+  // Success messages
+  SUCCESS: {
+    ANIMAL_SAVED: 'Animal saved successfully',
+    WEIGHT_RECORDED: 'Weight recorded successfully',
+    DATA_EXPORTED: 'Data exported successfully',
+    SETTINGS_UPDATED: 'Settings updated',
+  },
+  
+  // Error messages (user-friendly)
+  ERROR: {
+    GENERIC: 'Something went wrong. Please try again.',
+    NETWORK: 'Unable to connect. Please check your connection.',
+    NOT_FOUND: 'The requested item was not found.',
+    VALIDATION: 'Please check your input and try again.',
+    SAVE_FAILED: 'Unable to save. Please try again.',
+    LOAD_FAILED: 'Unable to load data. Please try again.',
+  },
+  
+  // Confirmation messages
+  CONFIRM: {
+    DELETE_ANIMAL: 'Are you sure you want to delete this animal? This action cannot be undone.',
+    DISCARD_CHANGES: 'You have unsaved changes. Discard them?',
+    EXPORT_DATA: 'Export all weight records?',
+  },
+  
+  // Empty states
+  EMPTY: {
+    NO_ANIMALS: 'No animals yet. Tap + to add your first animal.',
+    NO_WEIGHTS: 'No weight records. Start weighing to see history.',
+    NO_RESULTS: 'No results found for your search.',
+  },
+  
+  // Loading states
+  LOADING: {
+    DEFAULT: 'Loading...',
+    SAVING: 'Saving...',
+    EXPORTING: 'Exporting...',
+  },
+} as const;
+```
+
+### Toast/Notification Types
+```typescript
+// src/shared/types/notification.types.ts
+export type NotificationType = 'success' | 'error' | 'warning' | 'info';
+
+export interface ToastMessage {
+  type: NotificationType;
+  title: string;
+  message?: string;
+  duration?: number;  // ms, default 3000
+  action?: {
+    label: string;
+    onPress: () => void;
+  };
+}
+
+// Usage
+showToast({
+  type: 'success',
+  title: 'Weight Saved',
+  message: '450.5 kg recorded for Bessie',
+  duration: 3000,
+});
+```
+
+## Validation Messages
+
+### Field Validation
+```typescript
+// src/shared/constants/validation-messages.ts
+export const VALIDATION = {
+  REQUIRED: (field: string) => `${field} is required`,
+  MIN_LENGTH: (field: string, min: number) => `${field} must be at least ${min} characters`,
+  MAX_LENGTH: (field: string, max: number) => `${field} must be no more than ${max} characters`,
+  MIN_VALUE: (field: string, min: number) => `${field} must be at least ${min}`,
+  MAX_VALUE: (field: string, max: number) => `${field} must be no more than ${max}`,
+  INVALID_FORMAT: (field: string) => `${field} format is invalid`,
+  INVALID_EMAIL: 'Please enter a valid email address',
+  INVALID_NUMBER: 'Please enter a valid number',
+  POSITIVE_NUMBER: 'Please enter a positive number',
+} as const;
+
+// Usage
+if (!weight) {
+  return VALIDATION.REQUIRED('Weight');
+}
+if (weight < 0) {
+  return VALIDATION.POSITIVE_NUMBER;
+}
+if (weight > 10000) {
+  return VALIDATION.MAX_VALUE('Weight', 10000);
+}
+```
+
+## DTO Conventions
+
+### Request/Response DTOs
+```typescript
+// Naming: {Entity}{Action}Request / {Entity}{Action}Response
+
+// Create
+interface CreateAnimalRequest {
+  name: string;
+  species: string;
+  notes?: string;
+}
+
+interface CreateAnimalResponse {
+  id: string;
+  name: string;
+  species: string;
+  createdAt: string;
+}
+
+// Update
+interface UpdateAnimalRequest {
+  name?: string;
+  species?: string;
+  notes?: string;
+}
+
+// List
+interface ListAnimalsRequest {
+  page?: number;
+  pageSize?: number;
+  species?: string;
+  sortBy?: 'name' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
+}
+
+interface ListAnimalsResponse {
+  items: AnimalSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+```
+
+## Date/Time Formats
+
+### Standard Formats
+```typescript
+// src/shared/constants/date-formats.ts
+export const DATE_FORMATS = {
+  // Storage (ISO 8601)
+  ISO: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+  
+  // Display formats
+  DATE_SHORT: 'MM/dd/yyyy',        // 12/09/2024
+  DATE_LONG: 'MMMM d, yyyy',       // December 9, 2024
+  TIME: 'h:mm a',                   // 2:30 PM
+  DATETIME: 'MMM d, yyyy h:mm a',   // Dec 9, 2024 2:30 PM
+  
+  // Relative
+  RELATIVE: 'relative',             // "2 hours ago"
+} as const;
+
+// Usage
+import { format } from 'date-fns';
+
+const displayDate = format(new Date(timestamp), DATE_FORMATS.DATE_LONG);
+```
+
+## Units & Formatting
+
+### Weight Formatting
+```typescript
+// src/shared/utils/format.ts
+export function formatWeight(kg: number, unit: 'kg' | 'lb' = 'kg'): string {
+  if (unit === 'lb') {
+    const lb = kg * 2.20462;
+    return `${lb.toFixed(1)} lb`;
+  }
+  return `${kg.toFixed(1)} kg`;
+}
+
+// Always store in kg, display based on user preference
+```

@@ -19,15 +19,35 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          href: null, // Hide from tab bar
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="batches"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Batches',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="custom-fields"
+        options={{
+          title: 'Custom Fields',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.clipboard" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="animals"
+        options={{
+          title: 'Animals',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="pawprint.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="weighing"
+        options={{
+          title: 'Weigh',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="scalemass.fill" color={color} />,
         }}
       />
     </Tabs>

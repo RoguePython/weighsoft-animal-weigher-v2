@@ -1,0 +1,43 @@
+---
+globs:
+alwaysApply: true
+---
+
+# WeighsoftAnimalWeigherV2 - Project Rules
+
+## Project Overview
+This is a React Native application for animal weighing functionality.
+Follow all rules defined in this `.cursor/rules` directory.
+
+## Golden Rules
+1. **ALWAYS start with todo.md** when doing large tasks
+2. **Document as you go** to avoid hallucinations
+3. **Test everything** - unit tests and E2E tests with Playwright
+4. **Verify APK builds** frequently - don't go too far without confirming builds work
+5. **Version, commit, build, test** after significant changes
+
+## Project Structure
+```
+WeighsoftAnimalWeigherV2/
+├── .cursor/rules/      # Project rules (this folder)
+├── docs/               # Documentation
+├── src/                # Application source code
+│   ├── domain/         # Business logic, entities, use cases
+│   ├── data/           # Data layer, repositories, data sources
+│   ├── presentation/   # UI components, screens, view models
+│   ├── infrastructure/ # External services, SQLite, etc.
+│   └── shared/         # Shared utilities, constants, types
+├── test/               # Test files
+│   ├── unit/           # Unit tests
+│   └── e2e/            # Playwright E2E tests
+├── android/            # Android native code
+├── ios/                # iOS native code (if applicable)
+├── todo.md             # Task tracking (always update!)
+└── package.json        # Dependencies
+```
+
+## Technology Stack
+- **Framework**: React Native
+- **Database**: SQLite (expo-sqlite or react-native-sqlite-storage)
+- **Testing**: Jest (unit), Playwright (E2E)
+- **Architecture**: Clean Architecture with Repository Pattern

@@ -1,0 +1,347 @@
+---
+globs:
+  - "docs/**/*.md"
+  - "*.md"
+alwaysApply: true
+---
+
+# Documentation Standards
+
+## Golden Rule: One Source of Truth
+
+**Never duplicate content.** Link to canonical source instead.
+
+---
+
+## Documentation Hierarchy
+
+### Level 1: Entry Points (Max 2)
+```
+README.md              ← Project intro
+docs/START-HERE.md     ← Complete guide
+```
+
+### Level 2: Category Folders
+```
+docs/
+├── setup/              ← How to set up
+├── architecture/       ← System design
+├── security/          ← Security specs
+├── reports/           ← Report specs
+└── design/            ← Design system
+```
+
+### Level 3: Specific Topics
+```
+docs/setup/
+├── DEVELOPMENT-SETUP.md     ← Environment
+├── MOCK-DATA.md             ← Test data
+└── COMPONENT-LIBRARY.md     ← Components
+```
+
+---
+
+## Naming Conventions
+
+| Type | Format | Example |
+|------|--------|---------|
+| **Entry points** | SCREAMING-CASE.md | START-HERE.md |
+| **Specific topics** | kebab-case.md | data-model.md |
+| **ADRs** | NNN-description.md | 001-core-fields.md |
+
+---
+
+## When to Create New Doc
+
+### ✅ DO Create When:
+- New major topic not covered elsewhere
+- Following ADR format for architectural decision
+- Creating setup/how-to guide
+- Documenting API/schema
+
+### ❌ DON'T Create When:
+- Topic already documented → **Update existing doc**
+- Content < 50 lines → **Add section to existing doc**
+- It's a "summary of X" → **X should be good enough**
+- It's a "review of Y" → **Y should be comprehensive**
+- It's a "checklist for Z" → **Add checklist to Z**
+
+---
+
+## Anti-Patterns (Never Do This)
+
+### ❌ Meta-on-Meta Docs
+
+**Bad**:
+```
+docs/
+├── RULES-REVIEW.md              ← Reviews rules
+├── RULES-SUMMARY.md             ← Summarizes rules  
+├── RULES-COMPLETE-REVIEW.md     ← Reviews completeness
+└── RULES-FINAL-ASSESSMENT.md    ← Assesses everything
+```
+
+**Good**:
+```
+docs/
+└── START-HERE.md                ← One comprehensive doc
+```
+
+**Rule**: Maximum 1 level of meta-documentation.
+
+---
+
+### ❌ Duplicated Content
+
+**Bad**:
+```markdown
+<!-- In 3 different docs -->
+## Database Schema
+CREATE TABLE entities (...);
+
+## Database Schema  
+CREATE TABLE entities (...);
+
+## Database Schema
+CREATE TABLE entities (...);
+```
+
+**Good**:
+```markdown
+<!-- In one canonical doc: architecture/data-model.md -->
+## Database Schema
+CREATE TABLE entities (...);
+
+<!-- In other docs -->
+See [Database Schema](architecture/data-model.md#database-schema)
+```
+
+---
+
+### ❌ Unmaintained Docs
+
+**Bad**:
+- Docs with broken links
+- Docs with outdated version numbers
+- Docs contradicting code
+- Docs nobody reads
+
+**Good**:
+- Update docs in same PR as code
+- Review docs quarterly
+- Delete obsolete docs
+
+---
+
+## Documentation Locations
+
+| Type | Location | Example |
+|------|----------|---------|
+| **Strategic overview** | `docs/PROJECT-BRIEF.md` | Requirements, use cases |
+| **Architecture** | `docs/architecture/*.md` | System design, patterns |
+| **Decisions** | `docs/architecture/decisions/` | ADR 001, 002, etc. |
+| **Setup guides** | `docs/setup/` | Environment, mock data |
+| **Security specs** | `docs/security/` | Permissions, auth |
+| **Design system** | `docs/design/` | Colors, typography |
+| **AI context** | `docs/AI-ASSISTANT-CONTEXT.md` | Quick reference |
+
+---
+
+## Documentation Checklist
+
+Before creating new doc:
+- [ ] Does this already exist? → Update it instead
+- [ ] Is this < 50 lines? → Add to existing doc
+- [ ] Is this a sub-topic? → Add section to parent doc
+- [ ] Will this be maintained? → If no, don't create
+- [ ] Is this actionable? → If no, reconsider
+
+Before committing doc:
+- [ ] No duplicated content
+- [ ] All links work
+- [ ] Code samples tested
+- [ ] Follows naming convention
+- [ ] Added to DOCUMENTATION-INDEX.md
+
+---
+
+## Maintenance Schedule
+
+- **Per-PR**: Update docs affected by code changes
+- **Weekly**: Check new docs for broken links
+- **Monthly**: Review setup docs for accuracy
+- **Quarterly**: Review all docs, delete obsolete ones
+
+---
+
+## Examples
+
+### ✅ Good Documentation
+
+**Single source of truth**:
+```
+docs/architecture/data-model.md    ← Complete schema here
+
+docs/setup/MOCK-DATA.md            ← Links to schema
+"See [data-model.md](../architecture/data-model.md)"
+
+docs/security/permissions.md       ← References schema
+"See entities table in [data-model.md](...)"
+```
+
+**Clear hierarchy**:
+```
+docs/
+├── START-HERE.md                  ← One entry point
+├── setup/
+│   ├── FINAL-REVIEW-GUIDE.md      ← Read before starting
+│   ├── DEVELOPMENT-SETUP.md       ← Step-by-step setup
+│   └── MOCK-DATA.md               ← Test data
+└── architecture/
+    └── data-model.md              ← Complete schema
+```
+
+### ❌ Bad Documentation
+
+**Multiple sources of truth**:
+```
+docs/
+├── database-schema-v1.md          ← Which one is right?
+├── database-design.md             ← All say different things
+├── data-model.md                  ← Confusion!
+└── schema-reference.md            ← Maintenance nightmare
+```
+
+**Unclear hierarchy**:
+```
+docs/
+├── README.md
+├── START.md
+├── BEGIN-HERE.md
+├── GETTING-STARTED.md
+├── QUICK-START.md
+└── INTRODUCTION.md                ← Too many entry points!
+```
+
+---
+
+## ADR-Specific Rules
+
+Architecture Decision Records follow special rules:
+
+### Naming
+```
+NNN-descriptive-name.md
+001-data-model-core-vs-custom-fields.md
+002-default-custom-field-lists.md
+```
+
+### Structure
+```markdown
+# ADR NNN: Title
+
+**Date**: YYYY-MM-DD
+**Status**: Proposed | Accepted | Deprecated | Superseded
+**Deciders**: Names
+**Context Tags**: #tags
+
+## Context
+Why are we making this decision?
+
+## Decision
+What did we decide?
+
+## Consequences
+What are the implications?
+
+## Alternatives Considered
+What else did we consider?
+
+## References
+Links to relevant resources
+```
+
+### Immutability
+- **Never edit an existing ADR**
+- If decision changes, create new ADR that supersedes old one
+- Mark old ADR as "Superseded by ADR NNN"
+
+---
+
+## Quality Standards
+
+### Minimum Requirements
+- ✅ Proper markdown formatting
+- ✅ Working links
+- ✅ Tested code samples
+- ✅ Clear headings hierarchy
+- ✅ Table of contents (for docs > 200 lines)
+
+### Excellence Indicators
+- ✅ Real examples, not placeholders
+- ✅ "Why" explained, not just "how"
+- ✅ Diagrams for complex concepts
+- ✅ Decision rationale documented
+- ✅ Updated regularly
+
+---
+
+## Templates
+
+### Setup Guide Template
+```markdown
+# Title
+
+**Time to Complete**: X minutes
+**Prerequisites**: List them
+
+## Step 1: First Thing
+```bash
+commands here
+```
+
+## Step 2: Next Thing
+More instructions
+
+## Troubleshooting
+Common issues and solutions
+
+## Verification
+How to verify it worked
+```
+
+### Feature Documentation Template
+```markdown
+# Feature Name
+
+**Status**: MVP | V2 | Parked
+**Owner**: Name
+
+## Purpose
+Why this exists
+
+## Usage
+How to use it
+
+## Implementation
+Technical details
+
+## Testing
+How to test it
+```
+
+---
+
+## Rules Summary
+
+1. **One Source of Truth** - Never duplicate
+2. **Clear Hierarchy** - Entry → Category → Topic
+3. **No Meta-on-Meta** - Max 1 level of meta docs
+4. **Link, Don't Copy** - Reference canonical source
+5. **Maintain or Delete** - No stale docs
+6. **Update with Code** - Docs in same PR
+7. **Follow Conventions** - Naming, structure, ADRs
+
+---
+
+*Good documentation is updated documentation.*

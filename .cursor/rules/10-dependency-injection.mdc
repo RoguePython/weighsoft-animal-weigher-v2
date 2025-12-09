@@ -1,0 +1,220 @@
+---
+globs:
+  - "src/infrastructure/di/**/*"
+  - "src/**/*"
+alwaysApply: false
+---
+
+# Dependency Injection Rules
+
+## Overview
+
+Use dependency injection to:
+- Decouple components from concrete implementations
+- Enable easy testing with mocks
+- Follow the Dependency Inversion Principle
+
+## Container Setup
+
+### Simple DI Container
+```typescript
+// src/infrastructure/di/container.ts
+import { IAnimalRepository } from '@/domain/repositories/animal.repository';
+import { SQLiteAnimalRepository } from '@/data/repositories/sqlite-animal.repository';
+import { GetAnimalUseCase } from '@/domain/usecases/get-animal.usecase';
+import { DatabaseManager } from '@/infrastructure/database/database-manager';
+
+class DIContainer {
+  private static instance: DIContainer;
+  private _database: DatabaseManager | null = null;
+  private _repositories: Map<string, any> = new Map();
+
+  private constructor() {}
+
+  static getInstance(): DIContainer {
+    if (!DIContainer.instance) {
+      DIContainer.instance = new DIContainer();
+    }
+    return DIContainer.instance;
+  }
+
+  // Initialize async dependencies
+  async initialize(): Promise<void> {
+    this._database = await DatabaseManager.create();
+    await this._database.runMigrations();
+  }
+
+  // Database
+  get database(): DatabaseManager {
+    if (!this._database) {
+      throw new Error('Container not initialized. Call initialize() first.');
+    }
+    return this._database;
+  }
+
+  // Repositories
+  get animalRepository(): IAnimalRepository {
+    if (!this._repositories.has('animal')) {
+      this._repositories.set(
+        'animal',
+        new SQLiteAnimalRepository(this.database.db)
+      );
+    }
+    return this._repositories.get('animal');
+  }
+
+  // Use Cases
+  get getAnimalUseCase(): GetAnimalUseCase {
+    return new GetAnimalUseCase(this.animalRepository);
+  }
+
+  // For testing - reset container
+  reset(): void {
+    this._repositories.clear();
+    this._database = null;
+  }
+}
+
+export const container = DIContainer.getInstance();
+```
+
+## Usage in Components
+
+### React Context Provider
+```typescript
+// src/infrastructure/di/di-context.tsx
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { container, DIContainer } from './container';
+
+interface DIContextValue {
+  container: DIContainer;
+  isReady: boolean;
+}
+
+const DIContext = createContext<DIContextValue | null>(null);
+
+export const DIProvider: React.FC<{ children: React.ReactNode }> = ({ 
+  children 
+}) => {
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    container.initialize().then(() => setIsReady(true));
+  }, []);
+
+  if (!isReady) {
+    return <LoadingScreen />;
+  }
+
+  return (
+    <DIContext.Provider value={{ container, isReady }}>
+      {children}
+    </DIContext.Provider>
+  );
+};
+
+export const useContainer = (): DIContainer => {
+  const context = useContext(DIContext);
+  if (!context) {
+    throw new Error('useContainer must be used within DIProvider');
+  }
+  return context.container;
+};
+```
+
+### Using in ViewModels
+```typescript
+// src/presentation/viewmodels/animal-list.viewmodel.ts
+export class AnimalListViewModel {
+  constructor(
+    private readonly getAnimalsUseCase: GetAnimalsUseCase,
+    private readonly deleteAnimalUseCase: DeleteAnimalUseCase
+  ) {}
+
+  // Factory method for easy instantiation
+  static create(): AnimalListViewModel {
+    return new AnimalListViewModel(
+      container.getAnimalsUseCase,
+      container.deleteAnimalUseCase
+    );
+  }
+}
+```
+
+### Using in Components
+```typescript
+// src/presentation/screens/animal-list.screen.tsx
+export default function AnimalListScreen() {
+  const [viewModel] = useState(() => AnimalListViewModel.create());
+  
+  // Or use hook
+  const container = useContainer();
+  const [viewModel] = useState(
+    () => new AnimalListViewModel(
+      container.getAnimalsUseCase,
+      container.deleteAnimalUseCase
+    )
+  );
+}
+```
+
+## Testing with DI
+
+### Mocking Dependencies
+```typescript
+// test/unit/usecases/get-animal.usecase.test.ts
+describe('GetAnimalUseCase', () => {
+  let useCase: GetAnimalUseCase;
+  let mockRepository: jest.Mocked<IAnimalRepository>;
+
+  beforeEach(() => {
+    // Create mock
+    mockRepository = {
+      getById: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+      getAll: jest.fn(),
+    };
+
+    // Inject mock
+    useCase = new GetAnimalUseCase(mockRepository);
+  });
+
+  it('should return animal when found', async () => {
+    const animal = createTestAnimal();
+    mockRepository.getById.mockResolvedValue(animal);
+
+    const result = await useCase.execute(animal.id);
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual(animal);
+  });
+});
+```
+
+### Test Container
+```typescript
+// test/helpers/test-container.ts
+export function createTestContainer(overrides?: Partial<DIContainer>) {
+  return {
+    animalRepository: createMockRepository(),
+    getAnimalUseCase: createMockUseCase(),
+    ...overrides,
+  };
+}
+```
+
+## Best Practices
+
+### DO
+- ✅ Define interfaces in domain layer
+- ✅ Implement interfaces in data/infrastructure layers
+- ✅ Inject dependencies through constructors
+- ✅ Use factory methods for complex instantiation
+- ✅ Keep container initialization in App entry point
+
+### DON'T
+- ❌ Import concrete implementations in domain layer
+- ❌ Create instances with `new` inside business logic
+- ❌ Use container directly in components (use hooks)
+- ❌ Make container a global variable accessed anywhere

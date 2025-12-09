@@ -1,0 +1,426 @@
+---
+globs:
+  - "src/infrastructure/database/**/*"
+  - "src/data/**/*"
+alwaysApply: false
+---
+
+# Database Rules (Comprehensive)
+
+## Scope of This Rule
+
+**This rule covers**: Database **design** - schema structure, indexes, queries, transactions, performance.
+
+**For SQLite implementation** (connection, migrations, library setup), see **Rule 05** (database-sqlite.mdc).
+
+---
+
+## TL;DR - Quick Reference
+
+**Every table must have**:
+- Primary key: `id TEXT PRIMARY KEY`
+- Timestamps: `created_at INTEGER`, `updated_at INTEGER`
+- Naming: `snake_case`, tables plural, columns descriptive
+
+**Key patterns**:
+- Use parameterized queries (ALWAYS!)
+- Create indexes for foreign keys and frequent searches
+- Use transactions for multi-step operations
+- Store booleans as `INTEGER` (0/1)
+- Timestamps as Unix epoch (INTEGER)
+
+**Read full rule for**: Query optimization, transactions, constraints, best practices.
+
+---
+
+## Schema Design Principles
+
+### Table Structure
+```sql
+-- Every table MUST have:
+-- 1. Primary key (id)
+-- 2. Created timestamp (created_at)
+-- 3. Updated timestamp (updated_at)
+
+CREATE TABLE animals (
+  -- Primary key
+  id TEXT PRIMARY KEY NOT NULL,
+  
+  -- Business fields
+  name TEXT NOT NULL,
+  species TEXT NOT NULL,
+  breed TEXT,
+  tag_number TEXT,
+  notes TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  
+  -- Metadata
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  
+  -- Constraints
+  CONSTRAINT chk_is_active CHECK (is_active IN (0, 1))
+);
+
+CREATE TABLE weight_records (
+  id TEXT PRIMARY KEY NOT NULL,
+  animal_id TEXT NOT NULL,
+  weight_kg REAL NOT NULL,
+  recorded_at INTEGER NOT NULL,
+  notes TEXT,
+  recorded_by TEXT,
+  
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  
+  -- Foreign key
+  FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE,
+  
+  -- Constraints
+  CONSTRAINT chk_weight_positive CHECK (weight_kg > 0),
+  CONSTRAINT chk_weight_reasonable CHECK (weight_kg <= 10000)
+);
+```
+
+### Naming Conventions
+```sql
+-- Tables: snake_case, plural
+CREATE TABLE weight_records (...);
+CREATE TABLE animal_tags (...);
+
+-- Columns: snake_case
+animal_id, weight_kg, created_at, is_active
+
+-- Primary keys: always 'id'
+id TEXT PRIMARY KEY
+
+-- Foreign keys: {referenced_table_singular}_id
+animal_id REFERENCES animals(id)
+
+-- Timestamps: *_at suffix
+created_at, updated_at, recorded_at, deleted_at
+
+-- Booleans: is_* or has_* prefix (stored as INTEGER 0/1)
+is_active, is_deleted, has_photo
+
+-- Indexes: idx_{table}_{columns}
+CREATE INDEX idx_weights_animal_date ON weight_records(animal_id, recorded_at);
+```
+
+## Data Types
+
+### SQLite Type Mapping
+| TypeScript | SQLite | Notes |
+|------------|--------|-------|
+| `string` | `TEXT` | Use for IDs, names, etc. |
+| `number` (int) | `INTEGER` | Use for counts, timestamps |
+| `number` (float) | `REAL` | Use for weights, measurements |
+| `boolean` | `INTEGER` | 0 = false, 1 = true |
+| `Date` | `INTEGER` | Unix timestamp (ms or s) |
+| `object` | `TEXT` | JSON.stringify() |
+| `null` | `NULL` | Explicit null values |
+
+### ID Generation
+```typescript
+// Use UUIDs for primary keys
+import { v4 as uuidv4 } from 'uuid';
+
+function generateId(): string {
+  return uuidv4();
+}
+
+// Or use crypto API
+function generateId(): string {
+  return crypto.randomUUID();
+}
+```
+
+### Timestamp Handling
+```typescript
+// Always store as Unix timestamp (milliseconds)
+const timestamp = Date.now();
+
+// Convert to Date when reading
+const date = new Date(timestamp);
+
+// Mapper example
+class AnimalMapper {
+  static toDomain(dto: AnimalDTO): Animal {
+    return {
+      ...dto,
+      createdAt: new Date(dto.created_at),
+      updatedAt: new Date(dto.updated_at),
+    };
+  }
+
+  static toDTO(animal: Animal): AnimalDTO {
+    return {
+      ...animal,
+      created_at: animal.createdAt.getTime(),
+      updated_at: animal.updatedAt.getTime(),
+    };
+  }
+}
+```
+
+## Indexes
+
+### When to Create Indexes
+```sql
+-- 1. Foreign keys (always)
+CREATE INDEX idx_weights_animal_id ON weight_records(animal_id);
+
+-- 2. Frequently filtered columns
+CREATE INDEX idx_animals_species ON animals(species);
+CREATE INDEX idx_animals_is_active ON animals(is_active);
+
+-- 3. Frequently sorted columns
+CREATE INDEX idx_weights_recorded_at ON weight_records(recorded_at DESC);
+
+-- 4. Composite indexes for common queries
+CREATE INDEX idx_weights_animal_date 
+ON weight_records(animal_id, recorded_at DESC);
+
+-- 5. Unique constraints
+CREATE UNIQUE INDEX idx_animals_tag_number 
+ON animals(tag_number) WHERE tag_number IS NOT NULL;
+```
+
+### Index Best Practices
+```sql
+-- ✅ GOOD: Column order matters (most selective first)
+CREATE INDEX idx_lookup ON weight_records(animal_id, recorded_at);
+
+-- Use for: WHERE animal_id = ? AND recorded_at > ?
+-- Also for: WHERE animal_id = ?
+-- NOT for: WHERE recorded_at > ? (animal_id not in query)
+
+-- ✅ GOOD: Partial indexes for common filters
+CREATE INDEX idx_active_animals ON animals(name) WHERE is_active = 1;
+
+-- ❌ BAD: Too many indexes (slows writes)
+-- Only create indexes that support actual queries
+```
+
+## Constraints
+
+### Data Integrity
+```sql
+-- NOT NULL for required fields
+name TEXT NOT NULL,
+
+-- CHECK constraints for valid values
+CONSTRAINT chk_weight_positive CHECK (weight_kg > 0),
+CONSTRAINT chk_weight_max CHECK (weight_kg <= 10000),
+CONSTRAINT chk_species CHECK (species IN ('cattle', 'sheep', 'pig', 'goat', 'other')),
+
+-- UNIQUE constraints
+CONSTRAINT uq_tag_number UNIQUE (tag_number),
+
+-- Foreign key constraints
+FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE,
+```
+
+### Soft Delete Pattern
+```sql
+-- Add deleted_at column instead of deleting rows
+ALTER TABLE animals ADD COLUMN deleted_at INTEGER;
+
+-- Create index for active records
+CREATE INDEX idx_animals_active ON animals(id) WHERE deleted_at IS NULL;
+
+-- Query active records
+SELECT * FROM animals WHERE deleted_at IS NULL;
+
+-- Soft delete
+UPDATE animals SET deleted_at = ? WHERE id = ?;
+
+-- Hard delete (for cleanup)
+DELETE FROM animals WHERE deleted_at < ?;
+```
+
+## Query Patterns
+
+### Parameterized Queries (ALWAYS)
+```typescript
+// ✅ GOOD: Parameterized (SQL injection safe)
+await db.runAsync(
+  'SELECT * FROM animals WHERE species = ? AND is_active = ?',
+  [species, 1]
+);
+
+// ✅ GOOD: Named parameters (clearer)
+await db.runAsync(
+  'INSERT INTO animals (id, name, species, created_at, updated_at) VALUES ($id, $name, $species, $created, $updated)',
+  { $id: id, $name: name, $species: species, $created: now, $updated: now }
+);
+
+// ❌ BAD: String interpolation (SQL INJECTION!)
+await db.runAsync(`SELECT * FROM animals WHERE species = '${species}'`);
+```
+
+### Pagination
+```typescript
+// Offset pagination (simple but slow for large offsets)
+async getAnimals(page: number, pageSize: number): Promise<Animal[]> {
+  const offset = (page - 1) * pageSize;
+  return db.getAllAsync(
+    'SELECT * FROM animals ORDER BY name LIMIT ? OFFSET ?',
+    [pageSize, offset]
+  );
+}
+
+// Cursor pagination (better for large datasets)
+async getAnimals(cursor?: string, pageSize: number = 20): Promise<{
+  items: Animal[];
+  nextCursor: string | null;
+}> {
+  const query = cursor
+    ? 'SELECT * FROM animals WHERE id > ? ORDER BY id LIMIT ?'
+    : 'SELECT * FROM animals ORDER BY id LIMIT ?';
+  
+  const params = cursor ? [cursor, pageSize + 1] : [pageSize + 1];
+  const results = await db.getAllAsync(query, params);
+  
+  const hasMore = results.length > pageSize;
+  const items = hasMore ? results.slice(0, -1) : results;
+  const nextCursor = hasMore ? items[items.length - 1].id : null;
+  
+  return { items, nextCursor };
+}
+```
+
+### Aggregations
+```typescript
+// Count
+const count = await db.getFirstAsync<{ count: number }>(
+  'SELECT COUNT(*) as count FROM animals WHERE is_active = 1'
+);
+
+// Sum/Average
+const stats = await db.getFirstAsync<{ total: number; avg: number }>(
+  `SELECT 
+    SUM(weight_kg) as total,
+    AVG(weight_kg) as avg
+   FROM weight_records 
+   WHERE animal_id = ?`,
+  [animalId]
+);
+
+// Group by
+const bySpecies = await db.getAllAsync<{ species: string; count: number }>(
+  `SELECT species, COUNT(*) as count 
+   FROM animals 
+   WHERE is_active = 1 
+   GROUP BY species`
+);
+```
+
+## Transactions
+
+### When to Use Transactions
+```typescript
+// ✅ Multiple related operations
+async saveAnimalWithInitialWeight(
+  animal: Animal, 
+  weight: WeightRecord
+): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      'INSERT INTO animals (id, name, species, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      [animal.id, animal.name, animal.species, now, now]
+    );
+    
+    await db.runAsync(
+      'INSERT INTO weight_records (id, animal_id, weight_kg, recorded_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [weight.id, animal.id, weight.weightKg, weight.recordedAt, now, now]
+    );
+  });
+}
+
+// ✅ Read-modify-write operations
+async incrementWeighCount(animalId: string): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    const current = await db.getFirstAsync<{ count: number }>(
+      'SELECT weigh_count as count FROM animals WHERE id = ?',
+      [animalId]
+    );
+    
+    await db.runAsync(
+      'UPDATE animals SET weigh_count = ?, updated_at = ? WHERE id = ?',
+      [(current?.count ?? 0) + 1, Date.now(), animalId]
+    );
+  });
+}
+```
+
+### Transaction Error Handling
+```typescript
+async performTransaction<T>(
+  operation: () => Promise<T>
+): Promise<Result<T, DatabaseException>> {
+  try {
+    const result = await db.withTransactionAsync(operation);
+    return Result.ok(result);
+  } catch (error) {
+    logger.error('Transaction failed', error);
+    // Transaction automatically rolled back
+    return Result.failure(new DatabaseException('Transaction failed', error));
+  }
+}
+```
+
+## Migration Rules
+
+### Migration File Structure
+```typescript
+// src/infrastructure/database/migrations/002_add_weight_history.ts
+export const migration_002 = {
+  version: 2,
+  name: 'add_weight_history',
+  
+  up: async (db: SQLiteDatabase): Promise<void> => {
+    // Add new table
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS weight_history (
+        id TEXT PRIMARY KEY NOT NULL,
+        animal_id TEXT NOT NULL,
+        weight_kg REAL NOT NULL,
+        recorded_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE
+      );
+      
+      CREATE INDEX IF NOT EXISTS idx_weight_history_animal 
+      ON weight_history(animal_id, recorded_at DESC);
+    `);
+  },
+  
+  down: async (db: SQLiteDatabase): Promise<void> => {
+    await db.execAsync('DROP TABLE IF EXISTS weight_history');
+  },
+};
+```
+
+### Migration Best Practices
+```typescript
+// 1. Never modify existing migrations
+// 2. Always provide up AND down
+// 3. Test migrations on copy of production data
+// 4. Keep migrations small and focused
+// 5. Use IF EXISTS / IF NOT EXISTS for safety
+
+// ✅ GOOD: Safe column addition
+await db.execAsync(`
+  ALTER TABLE animals ADD COLUMN photo_url TEXT;
+`);
+
+// ⚠️ SQLite limitation: Can't drop columns easily
+// Instead, create new table and migrate data
+await db.execAsync(`
+  CREATE TABLE animals_new (...);
+  INSERT INTO animals_new SELECT ... FROM animals;
+  DROP TABLE animals;
+  ALTER TABLE animals_new RENAME TO animals;
+`);
+```

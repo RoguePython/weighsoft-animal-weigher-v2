@@ -1,0 +1,176 @@
+---
+globs:
+  - "docs/**/*"
+  - "**/*.md"
+alwaysApply: false
+---
+
+# Documentation Rules
+
+## Scope of This Rule
+
+**This rule covers**: Documentation **structure and templates** - folder organization, ADR format, README templates.
+
+**For documentation standards** (when to create, naming, anti-patterns), see **Rule 33** (documentation-standards.mdc).
+
+---
+
+## Documentation Structure
+
+```
+docs/
+├── README.md                    # Project overview and quick start
+├── architecture/
+│   ├── overview.md              # Architecture overview
+│   ├── data-flow.md             # How data flows through the app
+│   └── decisions/               # Architecture Decision Records (ADRs)
+│       └── 001-use-sqlite.md
+├── features/
+│   ├── weighing/                # Feature-specific docs
+│   │   ├── requirements.md
+│   │   └── implementation.md
+│   └── ...
+├── api/
+│   └── database-schema.md       # Database schema documentation
+├── guides/
+│   ├── setup.md                 # Development environment setup
+│   ├── testing.md               # How to run and write tests
+│   └── deployment.md            # How to build and deploy
+└── troubleshooting.md           # Common issues and solutions
+```
+
+## When to Document
+
+### Always Document
+- New features before implementation
+- Architecture decisions
+- Database schema changes
+- Complex business logic
+- Setup and deployment procedures
+- Troubleshooting solutions
+
+### Document As You Go
+- Update docs when code changes
+- Add troubleshooting entries when solving issues
+- Keep API documentation in sync
+
+## Documentation Standards
+
+### Markdown Formatting
+```markdown
+# Main Title (H1 - one per document)
+
+## Section (H2)
+
+### Subsection (H3)
+
+**Bold** for emphasis
+`code` for inline code
+```code blocks``` for multi-line code
+
+- Bullet points for lists
+1. Numbers for ordered steps
+```
+
+### Architecture Decision Records (ADR)
+```markdown
+# ADR-001: Use SQLite for Local Storage
+
+## Status
+Accepted
+
+## Context
+We need a local database solution for storing animal and weight data
+that works offline and syncs when connected.
+
+## Decision
+Use SQLite via expo-sqlite because:
+- Works offline
+- Good React Native support
+- Familiar SQL syntax
+- Can handle our data volume
+
+## Consequences
+### Positive
+- Offline-first capability
+- Fast local queries
+- Easy to backup
+
+### Negative
+- Need to manage migrations
+- Limited to single device (no built-in sync)
+
+## Alternatives Considered
+- AsyncStorage: Too limited for relational data
+- Realm: More complex, larger bundle size
+- WatermelonDB: Overkill for our use case
+```
+
+### Feature Documentation
+```markdown
+# Feature: Animal Weighing
+
+## Overview
+Brief description of what this feature does.
+
+## User Stories
+- As a user, I want to record an animal's weight
+- As a user, I want to see weight history
+
+## Requirements
+### Functional
+- FR-001: User can enter weight in kg
+- FR-002: Weight is saved with timestamp
+
+### Non-Functional
+- NFR-001: Weight entry should take < 3 taps
+- NFR-002: Data must persist offline
+
+## Implementation Notes
+Technical details about how this is implemented.
+
+## Testing
+How to test this feature manually and automatically.
+```
+
+## README Template
+
+```markdown
+# Project Name
+
+Brief description.
+
+## Quick Start
+
+\`\`\`bash
+# Install dependencies
+npm install
+
+# Run on Android
+npm run android
+
+# Run tests
+npm test
+\`\`\`
+
+## Documentation
+
+- [Setup Guide](docs/guides/setup.md)
+- [Architecture](docs/architecture/overview.md)
+- [Testing](docs/guides/testing.md)
+
+## Project Structure
+
+Brief overview of folder structure.
+
+## Contributing
+
+How to contribute to the project.
+```
+
+## Avoiding Documentation Rot
+
+1. **Review docs in PRs** - Check if docs need updating
+2. **Date sensitive content** - Add "Last updated" to guides
+3. **Link to code** - Reference actual files, not descriptions
+4. **Delete obsolete docs** - Outdated docs are worse than none

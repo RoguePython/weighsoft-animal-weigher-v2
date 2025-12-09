@@ -1,0 +1,543 @@
+---
+globs:
+  - "src/infrastructure/**/*"
+alwaysApply: false
+---
+
+# Push Notifications (Expo)
+
+## Setup with Expo
+
+### Install Dependencies
+```bash
+npx expo install expo-notifications expo-device expo-constants
+```
+
+### Request Permissions
+```typescript
+// src/infrastructure/notifications/notification-service.ts
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import { Platform } from 'react-native';
+
+export class NotificationService {
+  async registerForPushNotifications(): Promise<string | undefined> {
+    // Check if physical device
+    if (!Device.isDevice) {
+      Alert.alert('Error', 'Push notifications only work on physical devices');
+      return undefined;
+    }
+
+    // Get existing permissions
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    // Request if not granted
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') {
+      Alert.alert('Error', 'Failed to get push notification permissions');
+      return undefined;
+    }
+
+    // Get push token
+    const token = await Notifications.getExpoPushTokenAsync({
+      projectId: Constants.expoConfig?.extra?.eas?.projectId,
+    });
+
+    // Configure Android channel
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+      });
+    }
+
+    return token.data;
+  }
+}
+```
+
+## Notification Handler
+
+### Configure Handler
+```typescript
+// App.tsx or notification setup
+import * as Notifications from 'expo-notifications';
+
+// Set notification handler
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+```
+
+### Listen to Notifications
+```typescript
+export function useNotifications() {
+  const notificationListener = useRef<Notifications.Subscription>();
+  const responseListener = useRef<Notifications.Subscription>();
+
+  useEffect(() => {
+    // Notification received while app is in foreground
+    notificationListener.current = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        logger.info('Notification received', {
+          title: notification.request.content.title,
+          body: notification.request.content.body,
+        });
+        
+        // Handle notification
+        handleNotification(notification);
+      }
+    );
+
+    // User tapped notification
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data;
+        
+        // Navigate based on notification data
+        if (data.screen) {
+          navigation.navigate(data.screen, data.params);
+        }
+      }
+    );
+
+    return () => {
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
+    };
+  }, []);
+}
+```
+
+## Local Notifications
+
+### Schedule Local Notification
+```typescript
+export async function scheduleWeighingReminder(
+  animalName: string,
+  scheduledDate: Date
+): Promise<string> {
+  const notificationId = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Weighing Reminder',
+      body: `Time to weigh ${animalName}`,
+      data: {
+        screen: 'Weighing',
+        animalId: animal.id,
+      },
+      sound: true,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+    },
+    trigger: {
+      date: scheduledDate,
+    },
+  });
+
+  return notificationId;
+}
+```
+
+### Schedule Recurring Notification
+```typescript
+export async function scheduleWeeklyReminder(): Promise<string> {
+  const notificationId = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Weekly Weighing',
+      body: 'Time for your weekly animal weighing',
+    },
+    trigger: {
+      weekday: 1, // Monday
+      hour: 9,
+      minute: 0,
+      repeats: true,
+    },
+  });
+
+  return notificationId;
+}
+```
+
+### Cancel Notification
+```typescript
+// Cancel specific notification
+await Notifications.cancelScheduledNotificationAsync(notificationId);
+
+// Cancel all scheduled notifications
+await Notifications.cancelAllScheduledNotificationsAsync();
+```
+
+## Push Notification Types
+
+### Notification Payload Structure
+```typescript
+interface NotificationPayload {
+  // Required
+  to: string;  // Expo push token
+  
+  // Content
+  title: string;
+  body: string;
+  
+  // Optional
+  data?: {
+    screen?: string;
+    params?: object;
+    action?: string;
+  };
+  
+  // Android specific
+  channelId?: string;
+  priority?: 'default' | 'normal' | 'high' | 'max';
+  sound?: boolean | string;
+  
+  // iOS specific
+  badge?: number;
+  categoryId?: string;
+  
+  // Scheduling
+  ttl?: number;  // Time to live
+}
+```
+
+## Notification Categories
+
+### Define Categories (iOS)
+```typescript
+export async function setupNotificationCategories() {
+  await Notifications.setNotificationCategoryAsync('weighing-reminder', [
+    {
+      identifier: 'complete',
+      buttonTitle: 'Mark Complete',
+      options: {
+        opensAppToForeground: false,
+      },
+    },
+    {
+      identifier: 'snooze',
+      buttonTitle: 'Snooze',
+      options: {
+        opensAppToForeground: false,
+      },
+    },
+  ]);
+}
+
+// Send notification with category
+await Notifications.scheduleNotificationAsync({
+  content: {
+    title: 'Weighing Reminder',
+    body: 'Time to weigh your animals',
+    categoryIdentifier: 'weighing-reminder',
+  },
+  trigger: null,
+});
+```
+
+### Handle Category Actions
+```typescript
+Notifications.addNotificationResponseReceivedListener((response) => {
+  const { actionIdentifier, notification } = response;
+  
+  switch (actionIdentifier) {
+    case 'complete':
+      markWeighingComplete(notification.request.content.data.animalId);
+      break;
+    case 'snooze':
+      snoozeReminder(notification.request.content.data.animalId);
+      break;
+  }
+});
+```
+
+## Backend Integration
+
+### Send Push Notification (Backend)
+```typescript
+// Server-side code (Node.js example)
+import { Expo } from 'expo-server-sdk';
+
+const expo = new Expo();
+
+export async function sendPushNotification(
+  pushToken: string,
+  title: string,
+  body: string,
+  data?: object
+) {
+  // Check if valid Expo token
+  if (!Expo.isExpoPushToken(pushToken)) {
+    throw new Error(`Invalid push token: ${pushToken}`);
+  }
+
+  const message = {
+    to: pushToken,
+    sound: 'default',
+    title,
+    body,
+    data,
+  };
+
+  try {
+    const tickets = await expo.sendPushNotificationsAsync([message]);
+    logger.info('Push notification sent', { tickets });
+    return tickets;
+  } catch (error) {
+    logger.error('Failed to send push notification', error);
+    throw error;
+  }
+}
+```
+
+### Store Push Tokens
+```typescript
+// src/data/repositories/user-token.repository.ts
+export class UserTokenRepository {
+  async saveToken(userId: string, token: string): Promise<void> {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO user_tokens (user_id, push_token, updated_at) 
+       VALUES (?, ?, ?)`,
+      [userId, token, Date.now()]
+    );
+  }
+
+  async getToken(userId: string): Promise<string | null> {
+    const result = await db.getFirstAsync<{ push_token: string }>(
+      'SELECT push_token FROM user_tokens WHERE user_id = ?',
+      [userId]
+    );
+    return result?.push_token ?? null;
+  }
+
+  async deleteToken(userId: string): Promise<void> {
+    await db.runAsync(
+      'DELETE FROM user_tokens WHERE user_id = ?',
+      [userId]
+    );
+  }
+}
+```
+
+## Notification Channels (Android)
+
+### Create Custom Channels
+```typescript
+// Different channels for different notification types
+export async function setupNotificationChannels() {
+  if (Platform.OS !== 'android') return;
+
+  // High priority channel
+  await Notifications.setNotificationChannelAsync('urgent', {
+    name: 'Urgent Notifications',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#FF0000',
+    sound: 'urgent.wav',
+    enableVibrate: true,
+  });
+
+  // Normal priority channel
+  await Notifications.setNotificationChannelAsync('default', {
+    name: 'General Notifications',
+    importance: Notifications.AndroidImportance.DEFAULT,
+    sound: 'default',
+  });
+
+  // Low priority channel (silent)
+  await Notifications.setNotificationChannelAsync('silent', {
+    name: 'Silent Notifications',
+    importance: Notifications.AndroidImportance.LOW,
+    sound: null,
+    enableVibrate: false,
+  });
+}
+```
+
+## Badge Management
+
+### Update Badge Count
+```typescript
+// Set badge number
+await Notifications.setBadgeCountAsync(5);
+
+// Increment badge
+const currentBadge = await Notifications.getBadgeCountAsync();
+await Notifications.setBadgeCountAsync(currentBadge + 1);
+
+// Clear badge
+await Notifications.setBadgeCountAsync(0);
+```
+
+## Notification State Management
+
+### Track Notification Permissions
+```typescript
+// src/presentation/stores/notification.store.ts
+import { makeAutoObservable } from 'mobx';
+
+export class NotificationStore {
+  pushToken: string | null = null;
+  permissionStatus: 'granted' | 'denied' | 'undetermined' = 'undetermined';
+  isEnabled = false;
+
+  constructor(private notificationService: NotificationService) {
+    makeAutoObservable(this);
+    this.checkPermissions();
+  }
+
+  async checkPermissions() {
+    const { status } = await Notifications.getPermissionsAsync();
+    this.permissionStatus = status;
+    this.isEnabled = status === 'granted';
+  }
+
+  async requestPermissions() {
+    const token = await this.notificationService.registerForPushNotifications();
+    
+    if (token) {
+      this.pushToken = token;
+      this.permissionStatus = 'granted';
+      this.isEnabled = true;
+      
+      // Save token to backend
+      await userTokenRepository.saveToken(userId, token);
+    } else {
+      this.permissionStatus = 'denied';
+      this.isEnabled = false;
+    }
+  }
+
+  async disableNotifications() {
+    this.isEnabled = false;
+    // Optionally delete token from backend
+    await userTokenRepository.deleteToken(userId);
+  }
+}
+```
+
+## Deep Linking with Notifications
+
+### Handle Deep Links
+```typescript
+// src/infrastructure/navigation/deep-linking.ts
+import * as Linking from 'expo-linking';
+
+export function setupDeepLinking(navigation: NavigationContainerRef) {
+  // Handle notification deep links
+  Notifications.addNotificationResponseReceivedListener((response) => {
+    const { screen, params } = response.notification.request.content.data;
+    
+    if (screen) {
+      navigation.navigate(screen, params);
+    }
+  });
+
+  // Handle URL deep links
+  Linking.addEventListener('url', ({ url }) => {
+    const { path, queryParams } = Linking.parse(url);
+    
+    if (path) {
+      navigation.navigate(path, queryParams);
+    }
+  });
+}
+```
+
+## Testing Notifications
+
+### Test Local Notifications
+```typescript
+// Testing screen/button
+export const TestNotificationsScreen: React.FC = () => {
+  const sendTestNotification = async () => {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Test Notification',
+        body: 'This is a test notification',
+        data: { test: true },
+      },
+      trigger: {
+        seconds: 2,
+      },
+    });
+  };
+
+  return (
+    <Button title="Send Test Notification" onPress={sendTestNotification} />
+  );
+};
+```
+
+### Test Push Notifications
+```bash
+# Use Expo's push notification tool
+# https://expo.dev/notifications
+
+# Or use curl
+curl -X POST https://exp.host/--/api/v2/push/send \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "ExponentPushToken[xxxxxx]",
+    "title": "Test",
+    "body": "Test notification"
+  }'
+```
+
+## Best Practices
+
+### DO
+- ✅ Request permissions at appropriate time (not on app launch)
+- ✅ Explain why you need notifications
+- ✅ Provide notification settings screen
+- ✅ Allow users to disable notifications
+- ✅ Test on both Android and iOS
+- ✅ Handle notification taps gracefully
+- ✅ Use appropriate priority/importance
+
+### DON'T
+- ❌ Send too many notifications (spam)
+- ❌ Request permissions without context
+- ❌ Send notifications without user consent
+- ❌ Ignore notification preferences
+- ❌ Send notifications at inappropriate times
+- ❌ Make critical features dependent on notifications
+
+## Notification Analytics
+
+### Track Notification Events
+```typescript
+export function trackNotificationEvent(
+  event: 'sent' | 'received' | 'opened' | 'dismissed',
+  notificationId: string,
+  data?: object
+) {
+  analytics.track('notification_' + event, {
+    notification_id: notificationId,
+    timestamp: Date.now(),
+    ...data,
+  });
+}
+
+// Usage
+Notifications.addNotificationReceivedListener((notification) => {
+  trackNotificationEvent('received', notification.request.identifier);
+});
+
+Notifications.addNotificationResponseReceivedListener((response) => {
+  trackNotificationEvent('opened', response.notification.request.identifier);
+});
+```
