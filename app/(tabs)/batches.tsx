@@ -1,27 +1,27 @@
 /**
- * Batches Tab - Manage Weighing Sessions
+ * Sessions Tab - Manage Weighing Sessions
  * 
- * Create, view, edit, and manage batches.
+ * Create, view, edit, and manage sessions.
  */
 
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  TextInput,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { useTheme } from '@/infrastructure/theme/theme-context';
-import { SPACING, BORDER_RADIUS } from '@/shared/constants/spacing';
-import { container } from '@/infrastructure/di/container';
-import { generateUUID } from '@/shared/utils/uuid';
 import { Batch } from '@/domain/entities/batch';
 import { CustomFieldList } from '@/domain/entities/custom-field-list';
+import { container } from '@/infrastructure/di/container';
+import { useTheme } from '@/infrastructure/theme/theme-context';
+import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { generateUUID } from '@/shared/utils/uuid';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 const DEFAULT_USER_ID = 'default-user';
@@ -40,11 +40,7 @@ export default function BatchesScreen() {
   const [batchType, setBatchType] = useState<Batch['type']>('Routine');
   const [selectedCFLId, setSelectedCFLId] = useState<string>('');
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const batchRepo = container.batchRepository;
@@ -67,11 +63,18 @@ export default function BatchesScreen() {
       }
     } catch (error) {
       console.error('Failed to load data:', error);
-      Alert.alert('Error', 'Failed to load batches');
+      Alert.alert('Error', 'Failed to load sessions');
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedCFLId]);
+
+  // Refresh sessions whenever the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const handleCreateBatch = async () => {
     if (!batchName.trim()) {
@@ -113,7 +116,7 @@ export default function BatchesScreen() {
       await batchRepo.create(batch);
       await batchRepo.start(batchId);
 
-      Alert.alert('Batch Created!', 'Would you like to add animals to this batch?', [
+      Alert.alert('Session Created!', 'Would you like to add animals to this session?', [
         {
           text: 'Later',
           onPress: () => {
@@ -132,8 +135,8 @@ export default function BatchesScreen() {
         },
       ]);
     } catch (error) {
-      console.error('Failed to create batch:', error);
-      Alert.alert('Error', 'Failed to create batch. Please try again.');
+      console.error('Failed to create session:', error);
+      Alert.alert('Error', 'Failed to create session. Please try again.');
     } finally {
       setCreating(false);
     }
@@ -141,11 +144,11 @@ export default function BatchesScreen() {
 
   const handleDeleteBatch = async (batch: Batch) => {
     if (batch.status !== 'Draft') {
-      Alert.alert('Cannot Delete', 'Only draft batches can be deleted');
+      Alert.alert('Cannot Delete', 'Only draft sessions can be deleted');
       return;
     }
 
-    Alert.alert('Delete Batch', `Are you sure you want to delete "${batch.name}"?`, [
+      Alert.alert('Delete Session', `Are you sure you want to delete "${batch.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -156,8 +159,8 @@ export default function BatchesScreen() {
             await batchRepo.delete(batch.batch_id);
             loadData();
           } catch (error) {
-            console.error('Failed to delete batch:', error);
-            Alert.alert('Error', 'Failed to delete batch');
+            console.error('Failed to delete session:', error);
+            Alert.alert('Error', 'Failed to delete session');
           }
         },
       },
@@ -180,7 +183,7 @@ export default function BatchesScreen() {
       contentContainerStyle={styles.content}
     >
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text.primary }]}>Batches</Text>
+        <Text style={[styles.title, { color: theme.text.primary }]}>Sessions</Text>
         <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
           Manage your weighing sessions
         </Text>
@@ -193,20 +196,25 @@ export default function BatchesScreen() {
             onPress={() => setShowCreateForm(true)}
           >
             <Text style={[styles.createButtonText, { color: theme.text.inverse }]}>
-              + Create New Batch
+              + Create New Session
             </Text>
           </TouchableOpacity>
 
           {batches.length === 0 ? (
             <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
               <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-                No batches yet. Create your first batch to get started.
+                No sessions yet. Create your first session to get started.
               </Text>
             </View>
           ) : (
             <View style={styles.batchesList}>
               {batches.map((batch) => (
-                <View key={batch.batch_id} style={[styles.batchCard, { backgroundColor: theme.background.secondary }]}>
+                <TouchableOpacity
+                  key={batch.batch_id}
+                  style={[styles.batchCard, { backgroundColor: theme.background.secondary }]}
+                  activeOpacity={0.8}
+                  onPress={() => router.push(`/add-batch-animals?batchId=${batch.batch_id}`)}
+                >
                   <View style={styles.batchHeader}>
                     <View style={styles.batchInfo}>
                       <Text style={[styles.batchName, { color: theme.text.primary }]}>{batch.name}</Text>
@@ -229,7 +237,7 @@ export default function BatchesScreen() {
                       onPress={() => router.push(`/add-batch-animals?batchId=${batch.batch_id}`)}
                     >
                       <Text style={[styles.actionButtonText, { color: theme.text.primary }]}>
-                        Add Animals
+                        View Animals
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -241,17 +249,17 @@ export default function BatchesScreen() {
                       </Text>
                     </TouchableOpacity>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           )}
         </>
       ) : (
         <View style={styles.createForm}>
-          <Text style={[styles.formTitle, { color: theme.text.primary }]}>Create New Batch</Text>
+          <Text style={[styles.formTitle, { color: theme.text.primary }]}>Create New Session</Text>
 
           <View style={styles.field}>
-            <Text style={[styles.label, { color: theme.text.primary }]}>Batch Name *</Text>
+            <Text style={[styles.label, { color: theme.text.primary }]}>Session Name *</Text>
             <TextInput
               style={[
                 styles.input,
@@ -270,7 +278,7 @@ export default function BatchesScreen() {
           </View>
 
           <View style={styles.field}>
-            <Text style={[styles.label, { color: theme.text.primary }]}>Batch Type *</Text>
+            <Text style={[styles.label, { color: theme.text.primary }]}>Session Type *</Text>
             <View style={styles.typeButtons}>
               {batchTypes.map((type) => (
                 <TouchableOpacity
@@ -373,6 +381,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING[4],
+    paddingTop: SPACING[6],
   },
   header: {
     marginBottom: SPACING[6],

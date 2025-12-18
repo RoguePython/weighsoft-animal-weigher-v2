@@ -13,8 +13,34 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarInactiveTintColor: Colors[colorScheme ?? 'light'].tabIconDefault,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarStyle: {
+          backgroundColor: Colors[colorScheme ?? 'light'].background,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          position: 'absolute',
+          left: 16,
+          right: 16,
+          bottom: 16,
+          height: 64,
+          paddingBottom: 8,
+          paddingTop: 8,
+          shadowColor: '#000000',
+          shadowOpacity: 0.15,
+          shadowOffset: { width: 0, height: -2 },
+          shadowRadius: 8,
+          elevation: 8,
+        },
+        tabBarItemStyle: {
+          borderRadius: 16,
+          marginHorizontal: 4,
+        },
+        tabBarLabelStyle: {
+          fontWeight: '600',
+          fontSize: 12,
+        },
       }}>
       <Tabs.Screen
         name="index"
@@ -25,7 +51,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="batches"
         options={{
-          title: 'Batches',
+          title: 'Sessions',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
         }}
       />

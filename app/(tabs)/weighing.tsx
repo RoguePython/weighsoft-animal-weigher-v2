@@ -1,30 +1,31 @@
 /**
  * Weighing Tab - Weigh Animals
  * 
- * Select a batch, then weigh animals from that batch.
+ * Select a session, then weigh animals from that session.
  */
 
-import React, { useState, useEffect } from 'react';
+import { Batch } from '@/domain/entities/batch';
+import { CustomFieldList } from '@/domain/entities/custom-field-list';
+import { Entity } from '@/domain/entities/entity';
+import { Transaction } from '@/domain/entities/transaction';
+import { container } from '@/infrastructure/di/container';
+import { useTheme } from '@/infrastructure/theme/theme-context';
+import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { generateUUID } from '@/shared/utils/uuid';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
   FlatList,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useTheme } from '@/infrastructure/theme/theme-context';
-import { SPACING, BORDER_RADIUS } from '@/shared/constants/spacing';
-import { container } from '@/infrastructure/di/container';
-import { generateUUID } from '@/shared/utils/uuid';
-import { Entity } from '@/domain/entities/entity';
-import { Transaction } from '@/domain/entities/transaction';
-import { Batch } from '@/domain/entities/batch';
-import { CustomFieldList } from '@/domain/entities/custom-field-list';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 const DEFAULT_USER_ID = 'default-user';
@@ -52,16 +53,19 @@ export default function WeighingScreen() {
   // Weighing
   const [weight, setWeight] = useState('');
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
+  const [previousTransaction, setPreviousTransaction] = useState<Transaction | null>(null);
+  const [activeDateField, setActiveDateField] = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
+    // Initial load for web deep links; focus effect will keep it fresh
     loadBatches();
     if (params.batchId) {
-      // If batchId provided, load that batch
       loadBatchById(params.batchId);
     }
   }, [params.batchId]);
 
-  const loadBatches = async () => {
+  const loadBatches = useCallback(async () => {
     try {
       setLoading(true);
       const batchRepo = container.batchRepository;
@@ -72,7 +76,14 @@ export default function WeighingScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Refresh sessions whenever the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadBatches();
+    }, [loadBatches])
+  );
 
   const loadBatchById = async (batchId: string) => {
     try {
@@ -153,10 +164,21 @@ export default function WeighingScreen() {
     }
   };
 
-  const handleAnimalSelect = (entity: Entity) => {
+  const handleAnimalSelect = async (entity: Entity) => {
     setSelectedEntity(entity);
     setWeight('');
     setCustomFieldValues({});
+
+    // Load latest previous weighing for this animal
+    try {
+      const transactionRepo = container.transactionRepository;
+      const latest = await transactionRepo.findLatestByEntityId(entity.entity_id, 1);
+      setPreviousTransaction(latest[0] ?? null);
+    } catch (error) {
+      console.error('Failed to load previous weighing:', error);
+      setPreviousTransaction(null);
+    }
+
     setStep('weigh');
   };
 
@@ -265,6 +287,17 @@ export default function WeighingScreen() {
     setCustomFieldValues({ ...customFieldValues, [fieldId]: value });
   };
 
+  const handleDateChange = (fieldId: string, event: any, date?: Date) => {
+    setShowDatePicker(false);
+    setActiveDateField(null);
+    if (event?.type === 'dismissed') {
+      return;
+    }
+    if (date) {
+      updateCustomField(fieldId, date.toISOString());
+    }
+  };
+
   if (loading && step === 'select-batch') {
     return (
       <View style={[styles.container, { backgroundColor: theme.background.primary }]}>
@@ -281,7 +314,7 @@ export default function WeighingScreen() {
       <View style={styles.header}>
         <Text style={[styles.title, { color: theme.text.primary }]}>Weigh Animals</Text>
         <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
-          {step === 'select-batch' && 'Step 1: Select a batch'}
+          {step === 'select-batch' && 'Step 1: Select a session'}
           {step === 'select-cfl' && 'Step 2: Select custom fields'}
           {step === 'select-animal' && 'Step 3: Select an animal'}
           {step === 'weigh' && 'Step 4: Enter weight'}
@@ -294,13 +327,13 @@ export default function WeighingScreen() {
           {batches.length === 0 ? (
             <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
               <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-                No batches yet. Create a batch in the Batches tab first.
+                No sessions yet. Create a session in the Sessions tab first.
               </Text>
             </View>
           ) : (
             <>
               <Text style={[styles.instruction, { color: theme.text.primary }]}>
-                Select a batch to weigh animals from
+                Select a session to weigh animals from
               </Text>
               <FlatList
                 data={batches}
@@ -430,19 +463,30 @@ export default function WeighingScreen() {
             Select an animal to weigh
           </Text>
           {batchAnimals.length === 0 ? (
-            <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
+            <>
+              <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
               <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-                No animals in this batch. Add animals first.
+                No animals in this session. Add animals first.
               </Text>
               <TouchableOpacity
                 style={[styles.primaryButton, { backgroundColor: theme.interactive.primary }]}
                 onPress={() => router.push(`/add-batch-animals?batchId=${selectedBatch?.batch_id}`)}
               >
                 <Text style={[styles.primaryButtonText, { color: theme.text.inverse }]}>
-                  Add Animals to Batch
+                  Add Animals to Session
                 </Text>
               </TouchableOpacity>
-            </View>
+              </View>
+              <TouchableOpacity
+                style={[styles.secondaryButton, { backgroundColor: theme.background.secondary }]}
+                onPress={() => {
+                  setStep('select-cfl');
+                  setSelectedEntity(null);
+                }}
+              >
+                <Text style={[styles.secondaryButtonText, { color: theme.text.primary }]}>Back</Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <>
               <FlatList
@@ -500,6 +544,20 @@ export default function WeighingScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+
+          {previousTransaction && (
+            <View style={[styles.previousWeighCard, { backgroundColor: theme.background.secondary }]}>
+              <Text style={[styles.previousWeighTitle, { color: theme.text.primary }]}>
+                Previous weighing
+              </Text>
+              <Text style={[styles.previousWeighValue, { color: theme.interactive.primary }]}>
+                {previousTransaction.weight_kg.toFixed(1)} kg
+              </Text>
+              <Text style={[styles.previousWeighMeta, { color: theme.text.tertiary }]}>
+                {new Date(previousTransaction.timestamp).toLocaleDateString()}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: theme.text.primary }]}>Weight (kg) *</Text>
@@ -600,6 +658,72 @@ export default function WeighingScreen() {
                       ))}
                     </View>
                   )}
+                  {field.data_type === 'multi-select' && field.options && (
+                    <View style={styles.selectOptions}>
+                      {field.options.map((option) => {
+                        const current = customFieldValues[field.field_id];
+                        const selectedArray: string[] = Array.isArray(current) ? current : [];
+                        const isSelected = selectedArray.includes(option.value);
+                        const next = isSelected
+                          ? selectedArray.filter((v) => v !== option.value)
+                          : [...selectedArray, option.value];
+
+                        return (
+                          <TouchableOpacity
+                            key={option.value}
+                            style={[
+                              styles.selectOption,
+                              {
+                                backgroundColor: isSelected
+                                  ? theme.interactive.primary
+                                  : theme.background.secondary,
+                                borderColor: theme.border.default,
+                              },
+                            ]}
+                            onPress={() => updateCustomField(field.field_id, next)}
+                          >
+                            <Text
+                              style={[
+                                styles.selectOptionText,
+                                {
+                                  color: isSelected ? theme.text.inverse : theme.text.primary,
+                                },
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {field.data_type === 'date' && (
+                    <View>
+                      <TouchableOpacity
+                        style={[styles.dateButton, { backgroundColor: theme.background.secondary, borderColor: theme.border.default }]}
+                        onPress={() => {
+                          setActiveDateField(field.field_id);
+                          setShowDatePicker(true);
+                        }}
+                      >
+                        <Text style={{ color: theme.text.primary }}>
+                          {customFieldValues[field.field_id]
+                            ? new Date(customFieldValues[field.field_id]).toLocaleDateString()
+                            : 'Select date'}
+                        </Text>
+                      </TouchableOpacity>
+                      {showDatePicker && activeDateField === field.field_id && (
+                        <DateTimePicker
+                          value={customFieldValues[field.field_id]
+                            ? new Date(customFieldValues[field.field_id])
+                            : new Date()}
+                          mode="date"
+                          display="default"
+                          onChange={(event, date) => handleDateChange(field.field_id, event, date || undefined)}
+                        />
+                      )}
+                    </View>
+                  )}
                   {field.data_type === 'boolean' && (
                     <TouchableOpacity
                       style={[
@@ -676,6 +800,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING[4],
+    paddingTop: SPACING[6],
   },
   header: {
     marginBottom: SPACING[6],
@@ -850,5 +975,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: SPACING[3],
     marginTop: SPACING[4],
+  },
+  previousWeighCard: {
+    padding: SPACING[3],
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING[3],
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  previousWeighTitle: {
+    fontSize: 14,
+    marginBottom: SPACING[1],
+  },
+  previousWeighValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: SPACING[1],
+  },
+  previousWeighMeta: {
+    fontSize: 12,
+  },
+  dateButton: {
+    borderWidth: 1,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING[3],
+    justifyContent: 'center',
+    minHeight: 48,
   },
 });

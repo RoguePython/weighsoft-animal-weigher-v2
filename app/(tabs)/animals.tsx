@@ -1,26 +1,26 @@
 /**
  * Animals Tab - Manage Animals
- * 
- * Create, view, edit, and manage animals. Assign animals to batches.
+ *
+ * Create, view, edit, and manage animals. Assign animals to sessions.
  */
 
-import React, { useState, useEffect } from 'react';
+import { Batch } from '@/domain/entities/batch';
+import { Entity } from '@/domain/entities/entity';
+import { container } from '@/infrastructure/di/container';
+import { useTheme } from '@/infrastructure/theme/theme-context';
+import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useTheme } from '@/infrastructure/theme/theme-context';
-import { SPACING, BORDER_RADIUS } from '@/shared/constants/spacing';
-import { container } from '@/infrastructure/di/container';
-import { Entity } from '@/domain/entities/entity';
-import { Batch } from '@/domain/entities/batch';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 const DEFAULT_USER_ID = 'default-user';
@@ -33,11 +33,7 @@ export default function AnimalsScreen() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const entityRepo = container.entityRepository;
@@ -56,7 +52,14 @@ export default function AnimalsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Refresh data whenever the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const handleDeleteAnimal = async (animal: Entity) => {
     Alert.alert('Delete Animal', `Are you sure you want to delete "${animal.primary_tag}"?`, [
@@ -80,7 +83,7 @@ export default function AnimalsScreen() {
 
   const handleAssignToBatch = async (animal: Entity) => {
     if (batches.length === 0) {
-      Alert.alert('No Batches', 'Please create a batch first');
+      Alert.alert('No Sessions', 'Please create a session first');
       return;
     }
 
@@ -92,15 +95,15 @@ export default function AnimalsScreen() {
           const updated = { ...animal, current_group: b.batch_id };
           await entityRepo.update(updated);
           loadData();
-          Alert.alert('Assigned', `Animal assigned to ${b.name}`);
+          Alert.alert('Assigned', `Animal assigned to session ${b.name}`);
         } catch (error) {
           console.error('Failed to assign animal:', error);
-          Alert.alert('Error', 'Failed to assign animal to batch');
+          Alert.alert('Error', 'Failed to assign animal to session');
         }
       },
     }));
 
-    Alert.alert('Assign to Batch', 'Select a batch:', [
+    Alert.alert('Assign to Session', 'Select a session:', [
       ...batchOptions,
       { text: 'Cancel', style: 'cancel' },
     ]);
@@ -134,6 +137,14 @@ export default function AnimalsScreen() {
         <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
           Manage your animals
         </Text>
+        <TouchableOpacity
+          style={[styles.historyButton, { backgroundColor: theme.interactive.secondary }]}
+          onPress={() => router.push('/weighing-history')}
+        >
+          <Text style={[styles.historyButtonText, { color: theme.text.primary }]}>
+            View All Weighing History
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchContainer}>
@@ -173,18 +184,23 @@ export default function AnimalsScreen() {
           {filteredAnimals.map((animal) => {
             const batch = batches.find((b) => b.batch_id === animal.current_group);
             return (
-              <View key={animal.entity_id} style={[styles.animalCard, { backgroundColor: theme.background.secondary }]}>
+              <TouchableOpacity
+                key={animal.entity_id}
+                style={[styles.animalCard, { backgroundColor: theme.background.secondary }]}
+                activeOpacity={0.8}
+                onPress={() => router.push(`/entity-detail?entityId=${animal.entity_id}`)}
+              >
                 <View style={styles.animalHeader}>
                   <View style={styles.animalInfo}>
-                    <Text style={[styles.animalTag, { color: theme.text.primary }]}>
-                      {animal.primary_tag}
-                    </Text>
-                    <Text style={[styles.animalName, { color: theme.text.secondary }]}>
+                    <Text style={[styles.animalName, { color: theme.text.primary }]}>
                       {animal.name || animal.breed || 'No name'}
+                    </Text>
+                    <Text style={[styles.animalTag, { color: theme.text.secondary }]}>
+                      Tag: {animal.primary_tag}
                     </Text>
                     {batch && (
                       <Text style={[styles.animalBatch, { color: theme.text.tertiary }]}>
-                        Batch: {batch.name}
+                        Session: {batch.name}
                       </Text>
                     )}
                   </View>
@@ -208,11 +224,11 @@ export default function AnimalsScreen() {
                     onPress={() => handleAssignToBatch(animal)}
                   >
                     <Text style={[styles.actionButtonText, { color: theme.text.primary }]}>
-                      {animal.current_group ? 'Change Batch' : 'Assign to Batch'}
+                      {animal.current_group ? 'Change Session' : 'Assign to Session'}
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -227,6 +243,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING[4],
+    paddingTop: SPACING[6],
   },
   header: {
     marginBottom: SPACING[6],
@@ -281,12 +298,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   animalTag: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 14,
     marginBottom: SPACING[1],
   },
   animalName: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '700',
     marginBottom: SPACING[1],
   },
   animalBatch: {
@@ -322,6 +339,17 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontSize: 16,
     textAlign: 'center',
+  },
+  historyButton: {
+    paddingVertical: SPACING[2],
+    paddingHorizontal: SPACING[3],
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    marginTop: SPACING[2],
+  },
+  historyButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

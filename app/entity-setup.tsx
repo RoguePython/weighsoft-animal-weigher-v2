@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  FlatList,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/infrastructure/theme/theme-context';
@@ -21,6 +22,8 @@ import { SPACING, BORDER_RADIUS } from '@/shared/constants/spacing';
 import { container } from '@/infrastructure/di/container';
 import { generateUUID } from '@/shared/utils/uuid';
 import { Entity } from '@/domain/entities/entity';
+import { Transaction } from '@/domain/entities/transaction';
+import { Batch } from '@/domain/entities/batch';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 const DEFAULT_USER_ID = 'default-user';
@@ -35,12 +38,16 @@ export default function AddAnimalScreen() {
   const [tag, setTag] = useState('');
   const [name, setName] = useState('');
   const [targetWeight, setTargetWeight] = useState('');
+  const [weighingHistory, setWeighingHistory] = useState<Transaction[]>([]);
+  const [batches, setBatches] = useState<Map<string, Batch>>(new Map());
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const isEditing = !!params.entityId;
 
   useEffect(() => {
     if (isEditing && params.entityId) {
       loadEntity();
+      loadWeighingHistory();
     }
   }, [params.entityId]);
 
@@ -64,6 +71,45 @@ export default function AddAnimalScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadWeighingHistory = async () => {
+    if (!params.entityId) return;
+    
+    try {
+      setLoadingHistory(true);
+      const transactionRepo = container.transactionRepository;
+      const batchRepo = container.batchRepository;
+
+      const transactions = await transactionRepo.findByEntityId(params.entityId);
+      setWeighingHistory(transactions);
+
+      // Load batches for context
+      const batchIds = [...new Set(transactions.map((t) => t.batch_id))];
+      const batchResults = await Promise.all(
+        batchIds.map((id) => batchRepo.findById(id))
+      );
+
+      const batchMap = new Map<string, Batch>();
+      batchResults.forEach((batch) => {
+        if (batch) batchMap.set(batch.batch_id, batch);
+      });
+      setBatches(batchMap);
+    } catch (error) {
+      console.error('Failed to load weighing history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const formatDate = (date: Date): string => {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const handleSave = async () => {
@@ -254,6 +300,55 @@ export default function AddAnimalScreen() {
         </View>
       </View>
 
+      {/* Weighing History Section (only when editing) */}
+      {isEditing && (
+        <View style={styles.historySection}>
+          <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>
+            Weighing History
+          </Text>
+          {loadingHistory ? (
+            <ActivityIndicator size="small" color={theme.interactive.primary} />
+          ) : weighingHistory.length === 0 ? (
+            <View style={[styles.emptyHistory, { backgroundColor: theme.background.secondary }]}>
+              <Text style={[styles.emptyHistoryText, { color: theme.text.secondary }]}>
+                No weighing history yet. This animal hasn't been weighed.
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={weighingHistory}
+              keyExtractor={(item) => item.tx_id}
+              scrollEnabled={false}
+              renderItem={({ item }) => {
+                const batch = batches.get(item.batch_id);
+                return (
+                  <View style={[styles.historyItem, { backgroundColor: theme.background.secondary }]}>
+                    <View style={styles.historyItemHeader}>
+                      <View style={styles.historyItemInfo}>
+                        <Text style={[styles.historyWeight, { color: theme.interactive.primary }]}>
+                          {item.weight_kg.toFixed(1)} kg
+                        </Text>
+                        {batch && (
+                          <Text style={[styles.historySession, { color: theme.text.secondary }]}>
+                            Session: {batch.name}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={[styles.historyDate, { color: theme.text.tertiary }]}>
+                        {formatDate(item.timestamp)}
+                      </Text>
+                    </View>
+                    <Text style={[styles.historyReason, { color: theme.text.tertiary }]}>
+                      {item.reason}
+                    </Text>
+                  </View>
+                );
+              }}
+            />
+          )}
+        </View>
+      )}
+
       {/* Action Buttons */}
       <View style={styles.actions}>
         <TouchableOpacity
@@ -345,5 +440,55 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  historySection: {
+    marginTop: SPACING[6],
+    marginBottom: SPACING[4],
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: SPACING[3],
+  },
+  emptyHistory: {
+    padding: SPACING[4],
+    borderRadius: BORDER_RADIUS.lg,
+    alignItems: 'center',
+  },
+  emptyHistoryText: {
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  historyItem: {
+    padding: SPACING[3],
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING[2],
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  historyItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING[1],
+  },
+  historyItemInfo: {
+    flex: 1,
+  },
+  historyWeight: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: SPACING[1],
+  },
+  historySession: {
+    fontSize: 14,
+  },
+  historyDate: {
+    fontSize: 12,
+  },
+  historyReason: {
+    fontSize: 12,
+    textTransform: 'capitalize',
+    marginTop: SPACING[1],
   },
 });

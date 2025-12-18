@@ -4,21 +4,21 @@
  * Create, view, edit, and manage custom field lists (CFLs).
  */
 
-import React, { useState, useEffect } from 'react';
+import { CustomFieldList } from '@/domain/entities/custom-field-list';
+import { container } from '@/infrastructure/di/container';
+import { useTheme } from '@/infrastructure/theme/theme-context';
+import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useTheme } from '@/infrastructure/theme/theme-context';
-import { SPACING, BORDER_RADIUS } from '@/shared/constants/spacing';
-import { container } from '@/infrastructure/di/container';
-import { CustomFieldList } from '@/domain/entities/custom-field-list';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 const DEFAULT_USER_ID = 'default-user';
@@ -29,11 +29,7 @@ export default function CustomFieldsScreen() {
   const [loading, setLoading] = useState(true);
   const [cfls, setCfls] = useState<CustomFieldList[]>([]);
 
-  useEffect(() => {
-    loadCFLs();
-  }, []);
-
-  const loadCFLs = async () => {
+  const loadCFLs = useCallback(async () => {
     try {
       setLoading(true);
       const cflRepo = container.customFieldListRepository;
@@ -45,7 +41,14 @@ export default function CustomFieldsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Refresh custom field lists whenever the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadCFLs();
+    }, [loadCFLs])
+  );
 
   const handleDeleteCFL = async (cfl: CustomFieldList) => {
     if (cfl.is_system_default) {
@@ -163,6 +166,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING[4],
+    paddingTop: SPACING[6],
   },
   header: {
     marginBottom: SPACING[6],

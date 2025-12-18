@@ -158,6 +158,15 @@ export class SqliteTransactionRepository implements ITransactionRepository {
     return results.map((r) => this.mapToTransaction(r));
   }
 
+  async findAll(tenantId: string, limit?: number): Promise<Transaction[]> {
+    const limitClause = limit ? `LIMIT ${limit}` : '';
+    const results = await this.db.getAllAsync<any>(
+      `SELECT * FROM transactions WHERE tenant_id = ? ORDER BY timestamp DESC ${limitClause}`,
+      [tenantId]
+    );
+    return results.map((r) => this.mapToTransaction(r));
+  }
+
   async getHealthFlags(entityId: string): Promise<Transaction[]> {
     // Get transactions where weight decreased from previous
     const results = await this.db.getAllAsync<any>(

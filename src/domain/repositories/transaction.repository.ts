@@ -81,6 +81,11 @@ export interface ITransactionRepository {
   ): Promise<Transaction[]>;
 
   /**
+   * Find all transactions for a tenant (for history view)
+   */
+  findAll(tenantId: string, limit?: number): Promise<Transaction[]>;
+
+  /**
    * Get health flags for an entity (transactions with weight loss)
    */
   getHealthFlags(entityId: string): Promise<Transaction[]>;
