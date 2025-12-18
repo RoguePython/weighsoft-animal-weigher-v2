@@ -213,7 +213,7 @@ export default function SessionsScreen() {
                   key={batch.batch_id}
                   style={[styles.batchCard, { backgroundColor: theme.background.secondary }]}
                   activeOpacity={0.8}
-                  onPress={() => router.push(`/add-batch-animals?batchId=${batch.batch_id}`)}
+                  onPress={() => router.push(`/session-detail?batchId=${batch.batch_id}`)}
                 >
                   <View style={styles.batchHeader}>
                     <View style={styles.batchInfo}>
@@ -234,10 +234,10 @@ export default function SessionsScreen() {
                   <View style={styles.batchActions}>
                     <TouchableOpacity
                       style={[styles.actionButton, { backgroundColor: theme.interactive.secondary }]}
-                      onPress={() => router.push(`/add-batch-animals?batchId=${batch.batch_id}`)}
+                      onPress={() => router.push(`/session-detail?batchId=${batch.batch_id}`)}
                     >
                       <Text style={[styles.actionButtonText, { color: theme.text.primary }]}>
-                        View Animals
+                        View Weighings
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -381,8 +381,8 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING[4],
-    paddingTop: SPACING[8],
-    paddingBottom: SPACING[16],
+    paddingTop: SPACING[12],
+    paddingBottom: SPACING[24],
   },
   header: {
     marginBottom: SPACING[6],

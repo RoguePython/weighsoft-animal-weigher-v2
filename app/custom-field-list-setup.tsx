@@ -4,28 +4,28 @@
  * Create and edit Custom Field Lists (CFLs).
  */
 
-import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Switch,
-} from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useTheme } from '@/infrastructure/theme/theme-context';
-import { SPACING, BORDER_RADIUS } from '@/shared/constants/spacing';
-import { container } from '@/infrastructure/di/container';
-import { generateUUID } from '@/shared/utils/uuid';
-import {
-  CustomFieldDefinition,
   CustomFieldDataType,
+  CustomFieldDefinition,
   CustomFieldList,
 } from '@/domain/entities/custom-field-list';
+import { container } from '@/infrastructure/di/container';
+import { useTheme } from '@/infrastructure/theme/theme-context';
+import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { generateUUID } from '@/shared/utils/uuid';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 const DEFAULT_USER_ID = 'default-user';
@@ -424,6 +424,8 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING[4],
+    paddingTop: SPACING[12],
+    paddingBottom: SPACING[24],
   },
   header: {
     marginBottom: SPACING[6],

@@ -1,11 +1,11 @@
 /**
- * Sessions Tab - Manage Weighing Sessions
+ * Batches Tab - Manage Animal Groups
  * 
- * Create, view, edit, and manage sessions.
+ * Create, view, edit, and manage animal groups (batches).
+ * Animals can belong to multiple groups.
  */
 
-import { Batch } from '@/domain/entities/batch';
-import { CustomFieldList } from '@/domain/entities/custom-field-list';
+import { AnimalGroup } from '@/domain/entities/animal-group';
 import { container } from '@/infrastructure/di/container';
 import { useTheme } from '@/infrastructure/theme/theme-context';
 import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
@@ -30,98 +30,85 @@ export default function BatchesScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
-  const [batches, setBatches] = useState<Batch[]>([]);
-  const [cfls, setCfls] = useState<CustomFieldList[]>([]);
+  const [groups, setGroups] = useState<AnimalGroup[]>([]);
+  const [animalCounts, setAnimalCounts] = useState<Map<string, number>>(new Map());
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
 
   // Create form state
-  const [batchName, setBatchName] = useState('');
-  const [batchType, setBatchType] = useState<Batch['type']>('Routine');
-  const [selectedCFLId, setSelectedCFLId] = useState<string>('');
+  const [groupName, setGroupName] = useState('');
+  const [groupDescription, setGroupDescription] = useState('');
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const batchRepo = container.batchRepository;
-      const cflRepo = container.customFieldListRepository;
+      const groupRepo = container.animalGroupRepository;
+      const entityRepo = container.entityRepository;
 
-      const [allBatches, allCFLs] = await Promise.all([
-        batchRepo.findAll(DEFAULT_TENANT_ID),
-        cflRepo.findAll(DEFAULT_TENANT_ID),
-      ]);
+      const allGroups = await groupRepo.findAll(DEFAULT_TENANT_ID);
+      setGroups(allGroups);
 
-      setBatches(allBatches);
-      setCfls(allCFLs);
-
-      // Auto-select default CFL
-      if (allCFLs.length > 0 && !selectedCFLId) {
-        const defaultCFL = allCFLs.find((cfl) => cfl.name.includes('Routine')) || allCFLs[0];
-        if (defaultCFL) {
-          setSelectedCFLId(defaultCFL.cfl_id);
-        }
+      // Load animal counts for each group
+      const counts = new Map<string, number>();
+      for (const group of allGroups) {
+        const animals = await groupRepo.getAnimalsInGroup(group.group_id);
+        counts.set(group.group_id, animals.length);
       }
+      setAnimalCounts(counts);
     } catch (error) {
       console.error('Failed to load data:', error);
-      Alert.alert('Error', 'Failed to load sessions');
+      Alert.alert('Error', 'Failed to load animal groups');
     } finally {
       setLoading(false);
     }
-  }, [selectedCFLId]);
+  }, []);
 
-  // Refresh sessions whenever the tab is focused
+  // Refresh groups whenever the tab is focused
   useFocusEffect(
     useCallback(() => {
       loadData();
     }, [loadData])
   );
 
-  const handleCreateBatch = async () => {
-    if (!batchName.trim()) {
-      Alert.alert('Required Field', 'Please enter a batch name');
-      return;
-    }
-
-    if (!selectedCFLId) {
-      Alert.alert('Required Field', 'Please select a custom field list');
+  const handleCreateGroup = async () => {
+    if (!groupName.trim()) {
+      Alert.alert('Required Field', 'Please enter a group name');
       return;
     }
 
     setCreating(true);
     try {
-      const batchRepo = container.batchRepository;
-      const selectedCFL = cfls.find((cfl) => cfl.cfl_id === selectedCFLId);
+      const groupRepo = container.animalGroupRepository;
 
-      if (!selectedCFL) {
-        Alert.alert('Error', 'Selected custom field list not found');
+      // Check if group name already exists
+      const existingGroups = await groupRepo.findAll(DEFAULT_TENANT_ID);
+      if (existingGroups.some((g) => g.name.toLowerCase() === groupName.trim().toLowerCase())) {
+        Alert.alert('Duplicate Name', 'A group with this name already exists');
         setCreating(false);
         return;
       }
 
-      const batchId = generateUUID();
+      const groupId = generateUUID();
       const now = new Date();
-      const batch: Batch = {
-        batch_id: batchId,
+      const group: AnimalGroup = {
+        group_id: groupId,
         tenant_id: DEFAULT_TENANT_ID,
-        name: batchName.trim(),
-        type: batchType,
-        cfl_id: selectedCFL.cfl_id,
-        cfl_version: selectedCFL.version,
-        status: 'Draft',
+        name: groupName.trim(),
+        description: groupDescription.trim() || undefined,
         created_at: now,
         created_by: DEFAULT_USER_ID,
         updated_at: now,
       };
 
-      await batchRepo.create(batch);
-      await batchRepo.start(batchId);
+      await groupRepo.create(group);
 
-      Alert.alert('Session Created!', 'Would you like to add animals to this session?', [
+      Alert.alert('Group Created!', 'Would you like to add animals to this group?', [
         {
           text: 'Later',
           onPress: () => {
             setShowCreateForm(false);
-            setBatchName('');
+            setGroupName('');
+            setGroupDescription('');
             loadData();
           },
         },
@@ -129,42 +116,42 @@ export default function BatchesScreen() {
           text: 'Add Animals',
           onPress: () => {
             setShowCreateForm(false);
-            setBatchName('');
-            router.push(`/add-batch-animals?batchId=${batchId}`);
+            setGroupName('');
+            setGroupDescription('');
+            router.push(`/group-detail?groupId=${groupId}`);
           },
         },
       ]);
     } catch (error) {
-      console.error('Failed to create session:', error);
-      Alert.alert('Error', 'Failed to create session. Please try again.');
+      console.error('Failed to create group:', error);
+      Alert.alert('Error', 'Failed to create group. Please try again.');
     } finally {
       setCreating(false);
     }
   };
 
-  const handleDeleteBatch = async (batch: Batch) => {
-    if (batch.status !== 'Draft') {
-      Alert.alert('Cannot Delete', 'Only draft sessions can be deleted');
-      return;
-    }
-
-      Alert.alert('Delete Session', `Are you sure you want to delete "${batch.name}"?`, [
+  const handleDeleteGroup = async (group: AnimalGroup) => {
+    Alert.alert('Delete Group', `Are you sure you want to delete "${group.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
           try {
-            const batchRepo = container.batchRepository;
-            await batchRepo.delete(batch.batch_id);
+            const groupRepo = container.animalGroupRepository;
+            await groupRepo.delete(group.group_id);
             loadData();
           } catch (error) {
-            console.error('Failed to delete session:', error);
-            Alert.alert('Error', 'Failed to delete session');
+            console.error('Failed to delete group:', error);
+            Alert.alert('Error', 'Failed to delete group');
           }
         },
       },
     ]);
+  };
+
+  const handleEditGroup = (group: AnimalGroup) => {
+    router.push(`/group-setup?groupId=${group.group_id}`);
   };
 
   if (loading) {
@@ -175,17 +162,15 @@ export default function BatchesScreen() {
     );
   }
 
-  const batchTypes: Batch['type'][] = ['Arrival', 'Routine', 'Shipment', 'Auction', 'Other'];
-
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.background.primary }]}
       contentContainerStyle={styles.content}
     >
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text.primary }]}>Sessions</Text>
+        <Text style={[styles.title, { color: theme.text.primary }]}>Animal Groups</Text>
         <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
-          Manage your weighing sessions
+          Organize animals into groups for easier management
         </Text>
       </View>
 
@@ -196,70 +181,90 @@ export default function BatchesScreen() {
             onPress={() => setShowCreateForm(true)}
           >
             <Text style={[styles.createButtonText, { color: theme.text.inverse }]}>
-              + Create New Session
+              + Create New Group
             </Text>
           </TouchableOpacity>
 
-          {batches.length === 0 ? (
+          {groups.length === 0 ? (
             <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
               <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-                No sessions yet. Create your first session to get started.
+                No groups yet. Create your first group to organize animals.
               </Text>
             </View>
           ) : (
-            <View style={styles.batchesList}>
-              {batches.map((batch) => (
-                <TouchableOpacity
-                  key={batch.batch_id}
-                  style={[styles.batchCard, { backgroundColor: theme.background.secondary }]}
-                  activeOpacity={0.8}
-                  onPress={() => router.push(`/add-batch-animals?batchId=${batch.batch_id}`)}
-                >
-                  <View style={styles.batchHeader}>
-                    <View style={styles.batchInfo}>
-                      <Text style={[styles.batchName, { color: theme.text.primary }]}>{batch.name}</Text>
-                      <Text style={[styles.batchMeta, { color: theme.text.secondary }]}>
-                        {batch.type} • {batch.status} • {new Date(batch.created_at).toLocaleDateString()}
-                      </Text>
+            <View style={styles.groupsList}>
+              {groups.map((group) => {
+                const animalCount = animalCounts.get(group.group_id) || 0;
+                return (
+                  <TouchableOpacity
+                    key={group.group_id}
+                    style={[styles.groupCard, { backgroundColor: theme.background.secondary }]}
+                    activeOpacity={0.8}
+                    onPress={() => router.push(`/group-detail?groupId=${group.group_id}`)}
+                  >
+                    <View style={styles.groupHeader}>
+                      <View style={styles.groupInfo}>
+                        <Text style={[styles.groupName, { color: theme.text.primary }]}>
+                          {group.name}
+                        </Text>
+                        {group.description && (
+                          <Text style={[styles.groupDescription, { color: theme.text.secondary }]}>
+                            {group.description}
+                          </Text>
+                        )}
+                        <Text style={[styles.groupMeta, { color: theme.text.tertiary }]}>
+                          {animalCount} animal{animalCount !== 1 ? 's' : ''} • Created{' '}
+                          {new Date(group.created_at).toLocaleDateString()}
+                        </Text>
+                      </View>
                     </View>
-                    {batch.status === 'Draft' && (
+                    <View style={styles.groupActions}>
                       <TouchableOpacity
-                        onPress={() => handleDeleteBatch(batch)}
-                        style={styles.deleteButton}
+                        style={[styles.actionButton, { backgroundColor: theme.interactive.secondary }]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          router.push(`/group-detail?groupId=${group.group_id}`);
+                        }}
                       >
-                        <Text style={[styles.deleteButtonText, { color: theme.status.error }]}>Delete</Text>
+                        <Text style={[styles.actionButtonText, { color: theme.text.primary }]}>
+                          Manage Animals
+                        </Text>
                       </TouchableOpacity>
-                    )}
-                  </View>
-                  <View style={styles.batchActions}>
-                    <TouchableOpacity
-                      style={[styles.actionButton, { backgroundColor: theme.interactive.secondary }]}
-                      onPress={() => router.push(`/add-batch-animals?batchId=${batch.batch_id}`)}
-                    >
-                      <Text style={[styles.actionButtonText, { color: theme.text.primary }]}>
-                        View Animals
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionButton, { backgroundColor: theme.interactive.secondary }]}
-                      onPress={() => router.push(`/weighing?batchId=${batch.batch_id}`)}
-                    >
-                      <Text style={[styles.actionButtonText, { color: theme.text.primary }]}>
-                        Weigh Animals
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                      <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: theme.interactive.secondary }]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleEditGroup(group);
+                        }}
+                      >
+                        <Text style={[styles.actionButtonText, { color: theme.text.primary }]}>
+                          Edit
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.deleteButton, { borderColor: theme.status.error }]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleDeleteGroup(group);
+                        }}
+                      >
+                        <Text style={[styles.deleteButtonText, { color: theme.status.error }]}>
+                          Delete
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           )}
         </>
       ) : (
         <View style={styles.createForm}>
-          <Text style={[styles.formTitle, { color: theme.text.primary }]}>Create New Session</Text>
+          <Text style={[styles.formTitle, { color: theme.text.primary }]}>Create New Group</Text>
 
           <View style={styles.field}>
-            <Text style={[styles.label, { color: theme.text.primary }]}>Session Name *</Text>
+            <Text style={[styles.label, { color: theme.text.primary }]}>Group Name *</Text>
             <TextInput
               style={[
                 styles.input,
@@ -269,82 +274,33 @@ export default function BatchesScreen() {
                   color: theme.text.primary,
                 },
               ]}
-              value={batchName}
-              onChangeText={setBatchName}
-              placeholder="e.g., Pen 7 - Dec 2024"
+              value={groupName}
+              onChangeText={setGroupName}
+              placeholder="e.g., Pen 7, Lot A, Group 1"
               placeholderTextColor={theme.text.tertiary}
               autoFocus
             />
           </View>
 
           <View style={styles.field}>
-            <Text style={[styles.label, { color: theme.text.primary }]}>Session Type *</Text>
-            <View style={styles.typeButtons}>
-              {batchTypes.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={[
-                    styles.typeButton,
-                    {
-                      backgroundColor:
-                        batchType === type ? theme.interactive.primary : theme.background.secondary,
-                      borderColor: theme.border.default,
-                    },
-                  ]}
-                  onPress={() => setBatchType(type)}
-                >
-                  <Text
-                    style={[
-                      styles.typeButtonText,
-                      {
-                        color: batchType === type ? theme.text.inverse : theme.text.primary,
-                      },
-                    ]}
-                  >
-                    {type}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.field}>
-            <Text style={[styles.label, { color: theme.text.primary }]}>Custom Field List *</Text>
-            {cfls.length === 0 ? (
-              <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
-                <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-                  No custom field lists. Create one in the Custom Fields tab first.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.cflList}>
-                {cfls.map((cfl) => (
-                  <TouchableOpacity
-                    key={cfl.cfl_id}
-                    style={[
-                      styles.cflItem,
-                      {
-                        backgroundColor:
-                          selectedCFLId === cfl.cfl_id ? theme.interactive.primary : theme.background.secondary,
-                        borderColor: theme.border.default,
-                      },
-                    ]}
-                    onPress={() => setSelectedCFLId(cfl.cfl_id)}
-                  >
-                    <Text
-                      style={[
-                        styles.cflItemText,
-                        {
-                          color: selectedCFLId === cfl.cfl_id ? theme.text.inverse : theme.text.primary,
-                        },
-                      ]}
-                    >
-                      {cfl.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+            <Text style={[styles.label, { color: theme.text.primary }]}>Description</Text>
+            <TextInput
+              style={[
+                styles.input,
+                styles.textArea,
+                {
+                  backgroundColor: theme.background.secondary,
+                  borderColor: theme.border.default,
+                  color: theme.text.primary,
+                },
+              ]}
+              value={groupDescription}
+              onChangeText={setGroupDescription}
+              placeholder="Optional description for this group"
+              placeholderTextColor={theme.text.tertiary}
+              multiline
+              numberOfLines={3}
+            />
           </View>
 
           <View style={styles.formActions}>
@@ -352,14 +308,15 @@ export default function BatchesScreen() {
               style={[styles.cancelButton, { backgroundColor: theme.background.secondary }]}
               onPress={() => {
                 setShowCreateForm(false);
-                setBatchName('');
+                setGroupName('');
+                setGroupDescription('');
               }}
             >
               <Text style={[styles.buttonText, { color: theme.text.primary }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.createButton, { backgroundColor: theme.interactive.primary }]}
-              onPress={handleCreateBatch}
+              onPress={handleCreateGroup}
               disabled={creating}
             >
               {creating ? (
@@ -381,8 +338,8 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING[4],
-    paddingTop: SPACING[8],
-    paddingBottom: SPACING[16],
+    paddingTop: SPACING[12],
+    paddingBottom: SPACING[24],
   },
   header: {
     marginBottom: SPACING[6],
@@ -408,51 +365,58 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  batchesList: {
+  groupsList: {
     gap: SPACING[3],
   },
-  batchCard: {
+  groupCard: {
     padding: SPACING[4],
     borderRadius: BORDER_RADIUS.lg,
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  batchHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  groupHeader: {
     marginBottom: SPACING[3],
   },
-  batchInfo: {
+  groupInfo: {
     flex: 1,
   },
-  batchName: {
+  groupName: {
     fontSize: 18,
     fontWeight: '600',
     marginBottom: SPACING[1],
   },
-  batchMeta: {
+  groupDescription: {
+    fontSize: 14,
+    marginBottom: SPACING[1],
+  },
+  groupMeta: {
     fontSize: 14,
   },
-  deleteButton: {
-    padding: SPACING[2],
-  },
-  deleteButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  batchActions: {
+  groupActions: {
     flexDirection: 'row',
     gap: SPACING[2],
+    flexWrap: 'wrap',
   },
   actionButton: {
     flex: 1,
+    minWidth: 100,
     paddingVertical: SPACING[3],
     paddingHorizontal: SPACING[3],
     borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
   },
   actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    paddingVertical: SPACING[3],
+    paddingHorizontal: SPACING[3],
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  deleteButtonText: {
     fontSize: 14,
     fontWeight: '600',
   },
@@ -479,31 +443,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     minHeight: 56,
   },
-  typeButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING[2],
-  },
-  typeButton: {
-    paddingHorizontal: SPACING[4],
-    paddingVertical: SPACING[3],
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-  },
-  typeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  cflList: {
-    gap: SPACING[2],
-  },
-  cflItem: {
-    padding: SPACING[3],
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-  },
-  cflItemText: {
-    fontSize: 16,
+  textArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
   },
   emptyState: {
     padding: SPACING[6],
@@ -532,4 +474,3 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
-

@@ -9,10 +9,12 @@ import { IEntityRepository } from '@/domain/repositories/entity.repository';
 import { ITransactionRepository } from '@/domain/repositories/transaction.repository';
 import { IBatchRepository } from '@/domain/repositories/batch.repository';
 import { ICustomFieldListRepository } from '@/domain/repositories/custom-field-list.repository';
+import { IAnimalGroupRepository } from '@/domain/repositories/animal-group.repository';
 import { SqliteEntityRepository } from '@/data/repositories/sqlite-entity.repository';
 import { SqliteTransactionRepository } from '@/data/repositories/sqlite-transaction.repository';
 import { SqliteBatchRepository } from '@/data/repositories/sqlite-batch.repository';
 import { SqliteCustomFieldListRepository } from '@/data/repositories/sqlite-custom-field-list.repository';
+import { SqliteAnimalGroupRepository } from '@/data/repositories/sqlite-animal-group.repository';
 
 class DIContainer {
   private static instance: DIContainer;
@@ -81,6 +83,16 @@ class DIContainer {
       );
     }
     return this._repositories.get('cfl');
+  }
+
+  get animalGroupRepository(): IAnimalGroupRepository {
+    if (!this._repositories.has('animalGroup')) {
+      this._repositories.set(
+        'animalGroup',
+        new SqliteAnimalGroupRepository(this.database.database)
+      );
+    }
+    return this._repositories.get('animalGroup');
   }
 
   // For testing - reset container

@@ -132,7 +132,7 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabIcon: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
   },
 });

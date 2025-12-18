@@ -72,6 +72,14 @@ export class DatabaseManager {
         [2, new Date().toISOString()]
       );
     }
+
+    if (currentVersion < 3) {
+      await this.runMigration003();
+      await this.db.runAsync(
+        'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+        [3, new Date().toISOString()]
+      );
+    }
   }
 
   private async runMigration001(): Promise<void> {
@@ -224,11 +232,40 @@ export class DatabaseManager {
     `);
   }
 
-  async close(): Promise<void> {
-    if (this.db) {
-      await this.db.closeAsync();
-      this.db = null;
-    }
+  private async runMigration003(): Promise<void> {
+    if (!this.db) return;
+
+    // Create animal_groups table
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS animal_groups (
+        group_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        updated_by TEXT,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+        UNIQUE (tenant_id, name)
+      );
+
+      -- Junction table for many-to-many relationship
+      CREATE TABLE IF NOT EXISTS animal_group_members (
+        group_id TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        added_at TEXT NOT NULL,
+        added_by TEXT NOT NULL,
+        PRIMARY KEY (group_id, entity_id),
+        FOREIGN KEY (group_id) REFERENCES animal_groups(group_id) ON DELETE CASCADE,
+        FOREIGN KEY (entity_id) REFERENCES entities(entity_id) ON DELETE CASCADE
+      );
+
+      -- Indexes
+      CREATE INDEX IF NOT EXISTS idx_animal_groups_tenant ON animal_groups(tenant_id);
+      CREATE INDEX IF NOT EXISTS idx_animal_group_members_group ON animal_group_members(group_id);
+      CREATE INDEX IF NOT EXISTS idx_animal_group_members_entity ON animal_group_members(entity_id);
+    `);
   }
 
   async close(): Promise<void> {

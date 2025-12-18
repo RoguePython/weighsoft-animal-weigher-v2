@@ -16,6 +16,7 @@ export const SPACING = {
   10: 40,
   12: 48,
   16: 64,
+  24: 96,
 } as const;
 
 export const BORDER_RADIUS = {
