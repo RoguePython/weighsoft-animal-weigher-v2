@@ -800,7 +800,8 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING[4],
-    paddingTop: SPACING[6],
+    paddingTop: SPACING[8],
+    paddingBottom: SPACING[16],
   },
   header: {
     marginBottom: SPACING[6],

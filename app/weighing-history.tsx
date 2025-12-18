@@ -4,23 +4,22 @@
  * View all weighing transactions across all animals and sessions.
  */
 
-import React, { useState, useEffect } from 'react';
+import { Batch } from '@/domain/entities/batch';
+import { Entity } from '@/domain/entities/entity';
+import { Transaction } from '@/domain/entities/transaction';
+import { container } from '@/infrastructure/di/container';
+import { useTheme } from '@/infrastructure/theme/theme-context';
+import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useTheme } from '@/infrastructure/theme/theme-context';
-import { SPACING, BORDER_RADIUS } from '@/shared/constants/spacing';
-import { container } from '@/infrastructure/di/container';
-import { Transaction } from '@/domain/entities/transaction';
-import { Entity } from '@/domain/entities/entity';
-import { Batch } from '@/domain/entities/batch';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 
@@ -126,7 +125,11 @@ export default function WeighingHistoryScreen() {
             const batch = batches.get(item.batch_id);
 
             return (
-              <View style={[styles.historyCard, { backgroundColor: theme.background.secondary }]}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => router.push(`/transaction-detail?txId=${item.tx_id}`)}
+                style={[styles.historyCard, { backgroundColor: theme.background.secondary }]}
+              >
                 <View style={styles.historyHeader}>
                   <View style={styles.historyInfo}>
                     <Text style={[styles.animalTag, { color: theme.text.primary }]}>
@@ -155,7 +158,7 @@ export default function WeighingHistoryScreen() {
                     {item.reason}
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           }}
         />
@@ -189,6 +192,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: SPACING[4],
+    paddingBottom: SPACING[16],
     gap: SPACING[3],
   },
   historyCard: {

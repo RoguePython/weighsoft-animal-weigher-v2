@@ -4,6 +4,7 @@
  * View an animal's core info and full weighing history without editing.
  */
 
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,14 +13,13 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { container } from '@/infrastructure/di/container';
-import { useTheme } from '@/infrastructure/theme/theme-context';
+import { Batch } from '@/domain/entities/batch';
 import { Entity } from '@/domain/entities/entity';
 import { Transaction } from '@/domain/entities/transaction';
-import { Batch } from '@/domain/entities/batch';
-import { SPACING, BORDER_RADIUS } from '@/shared/constants/spacing';
+import { container } from '@/infrastructure/di/container';
+import { useTheme } from '@/infrastructure/theme/theme-context';
+import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 
@@ -187,7 +187,8 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING[4],
-    paddingTop: SPACING[6],
+    paddingTop: SPACING[8],
+    paddingBottom: SPACING[16],
   },
   header: {
     marginBottom: SPACING[6],

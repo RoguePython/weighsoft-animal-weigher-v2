@@ -1,8 +1,8 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { Image, StyleSheet } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -51,31 +51,88 @@ export default function TabLayout() {
       <Tabs.Screen
         name="batches"
         options={{
+          title: 'Batches',
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require('@/assets/images/batches-icon.png')}
+              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="sessions"
+        options={{
           title: 'Sessions',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require('@/assets/images/sessions-icon.png')}
+              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
+              resizeMode="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="custom-fields"
         options={{
           title: 'Custom Fields',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.clipboard" color={color} />,
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require('@/assets/images/custom-fields-icon.png')}
+              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
+              resizeMode="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="animals"
         options={{
           title: 'Animals',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="pawprint.fill" color={color} />,
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require('@/assets/images/animals-icon.png')}
+              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
+              resizeMode="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="weighing"
         options={{
           title: 'Weigh',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="scalemass.fill" color={color} />,
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require('@/assets/images/weighing-icon.png')}
+              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: 'History',
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require('@/assets/images/weighing-history-icon.png')}
+              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
+              resizeMode="contain"
+            />
+          ),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabIcon: {
+    width: 28,
+    height: 28,
+  },
+});

@@ -4,26 +4,26 @@
  * Easy form to add or edit an animal with manual name entry.
  */
 
-import React, { useState, useEffect } from 'react';
+import { Batch } from '@/domain/entities/batch';
+import { Entity } from '@/domain/entities/entity';
+import { Transaction } from '@/domain/entities/transaction';
+import { container } from '@/infrastructure/di/container';
+import { useTheme } from '@/infrastructure/theme/theme-context';
+import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { generateUUID } from '@/shared/utils/uuid';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
   FlatList,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useTheme } from '@/infrastructure/theme/theme-context';
-import { SPACING, BORDER_RADIUS } from '@/shared/constants/spacing';
-import { container } from '@/infrastructure/di/container';
-import { generateUUID } from '@/shared/utils/uuid';
-import { Entity } from '@/domain/entities/entity';
-import { Transaction } from '@/domain/entities/transaction';
-import { Batch } from '@/domain/entities/batch';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 const DEFAULT_USER_ID = 'default-user';
@@ -381,6 +381,8 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING[4],
+    paddingTop: SPACING[8],
+    paddingBottom: SPACING[16],
   },
   header: {
     marginBottom: SPACING[6],

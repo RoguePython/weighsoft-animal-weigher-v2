@@ -26,7 +26,7 @@ import {
 const DEFAULT_TENANT_ID = 'default-tenant';
 const DEFAULT_USER_ID = 'default-user';
 
-export default function BatchesScreen() {
+export default function SessionsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
