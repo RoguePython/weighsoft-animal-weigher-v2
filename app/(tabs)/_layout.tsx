@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Image, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { Colors } from '@/constants/theme';
@@ -43,45 +44,27 @@ export default function TabLayout() {
           ...TEXT_STYLES.caption,
         },
       }}>
+      {/* Primary Tabs - Only 4 visible */}
       <Tabs.Screen
         name="index"
         options={{
-          href: null, // Hide from tab bar
-        }}
-      />
-      <Tabs.Screen
-        name="batches"
-        options={{
-          title: 'Batches',
-          tabBarIcon: ({ focused }) => (
-            <Image
-              source={require('@/assets/images/batches-icon.png')}
-              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
-              resizeMode="contain"
+          title: 'Home',
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'home' : 'home-outline'}
+              size={24}
+              color={color}
             />
           ),
         }}
       />
       <Tabs.Screen
-        name="sessions"
+        name="weigh"
         options={{
-          title: 'Sessions',
+          title: 'Weigh',
           tabBarIcon: ({ focused }) => (
             <Image
-              source={require('@/assets/images/sessions-icon.png')}
-              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
-              resizeMode="contain"
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="custom-fields"
-        options={{
-          title: 'Custom Fields',
-          tabBarIcon: ({ focused }) => (
-            <Image
-              source={require('@/assets/images/custom-fields-icon.png')}
+              source={require('@/assets/images/weighing-icon.png')}
               style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
               resizeMode="contain"
             />
@@ -102,29 +85,42 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="weigh"
+        name="more"
         options={{
-          title: 'Weigh',
-          tabBarIcon: ({ focused }) => (
-            <Image
-              source={require('@/assets/images/weighing-icon.png')}
-              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
-              resizeMode="contain"
+          title: 'More',
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'menu' : 'menu-outline'}
+              size={24}
+              color={color}
             />
           ),
+        }}
+      />
+
+      {/* Secondary Tabs - Hidden from tab bar, accessible via More menu */}
+      <Tabs.Screen
+        name="batches"
+        options={{
+          href: null, // Hide from tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="sessions"
+        options={{
+          href: null, // Hide from tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="custom-fields"
+        options={{
+          href: null, // Hide from tab bar
         }}
       />
       <Tabs.Screen
         name="history"
         options={{
-          title: 'History',
-          tabBarIcon: ({ focused }) => (
-            <Image
-              source={require('@/assets/images/weighing-history-icon.png')}
-              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
-              resizeMode="contain"
-            />
-          ),
+          href: null, // Hide from tab bar
         }}
       />
     </Tabs>

@@ -15,20 +15,19 @@ import { useTheme } from '@/infrastructure/theme/theme-context';
 import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
 import { TEXT_STYLES } from '@/shared/constants/typography';
 import { generateUUID } from '@/shared/utils/uuid';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
+  TextInput as RNTextInput,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput as RNTextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 
 import { PreviousWeightCard, SessionPicker } from '@/presentation/components';
@@ -871,6 +870,7 @@ export default function WeighScreen() {
         </View>
       )}
     </ScrollView>
+    </View>
   );
 }
 
