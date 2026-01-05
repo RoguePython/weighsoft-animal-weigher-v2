@@ -1,7 +1,8 @@
 /**
  * Weighing History Screen
- * 
+ *
  * View all weighing transactions across all animals and sessions.
+ * Redesigned with new component library for better UX.
  */
 
 import { Batch } from '@/domain/entities/batch';
@@ -9,36 +10,42 @@ import { Entity } from '@/domain/entities/entity';
 import { Transaction } from '@/domain/entities/transaction';
 import { container } from '@/infrastructure/di/container';
 import { useTheme } from '@/infrastructure/theme/theme-context';
-import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { SPACING } from '@/shared/constants/spacing';
+import { TEXT_STYLES } from '@/shared/constants/typography';
+import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native';
+import { Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as XLSX from 'xlsx';
 
+import { DetailScreenHeader } from '@/presentation/components';
+import { Card, EmptyState, LoadingState, SecondaryButton, StatusBadge } from '@/presentation/components/ui';
+import { SearchInput } from '@/presentation/components/ui/input';
+
 const DEFAULT_TENANT_ID = 'default-tenant';
+
+interface TransactionWithHealth extends Transaction {
+  weightChange?: number;
+  weightChangePercent?: number;
+  hasWeightLoss?: boolean;
+  severity?: 'minor' | 'moderate' | 'severe';
+}
 
 export default function WeighingHistoryScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<TransactionWithHealth[]>([]);
   const [entities, setEntities] = useState<Map<string, Entity>>(new Map());
   const [batches, setBatches] = useState<Map<string, Batch>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -74,9 +81,9 @@ export default function WeighingHistoryScreen() {
 
       setEntities(entityMap);
       setBatches(batchMap);
-      setFilteredTransactions(allTransactions);
     } catch (error) {
       console.error('Failed to load history:', error);
+      Alert.alert('Error', 'Failed to load weighing history');
     } finally {
       setLoading(false);
     }
@@ -89,7 +96,13 @@ export default function WeighingHistoryScreen() {
     }, [loadHistory])
   );
 
-  // Filter transactions based on search and filters
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadHistory();
+    setRefreshing(false);
+  }, [loadHistory]);
+
+  // Calculate weight changes and filter transactions
   useEffect(() => {
     let filtered = [...transactions];
 
@@ -118,7 +131,56 @@ export default function WeighingHistoryScreen() {
       filtered = filtered.filter((tx) => tx.batch_id === selectedSession);
     }
 
-    setFilteredTransactions(filtered);
+    // Calculate weight changes for each transaction
+    const transactionsWithHealth: TransactionWithHealth[] = filtered.map((tx) => {
+      const entity = entities.get(tx.entity_id);
+      if (!entity) return { ...tx };
+
+      // Find previous transaction for this entity
+      const entityTransactions = transactions
+        .filter((t) => t.entity_id === tx.entity_id)
+        .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+      const currentIndex = entityTransactions.findIndex((t) => t.tx_id === tx.tx_id);
+      if (currentIndex > 0) {
+        const previous = entityTransactions[currentIndex - 1];
+        const weightChange = tx.weight_kg - previous.weight_kg;
+        const weightChangePercent = (weightChange / previous.weight_kg) * 100;
+
+        // Detect weight loss
+        if (weightChange < 0) {
+          const lossPercent = Math.abs(weightChangePercent);
+          let severity: 'minor' | 'moderate' | 'severe' = 'minor';
+          if (lossPercent > 5) {
+            severity = 'severe';
+          } else if (lossPercent > 2) {
+            severity = 'moderate';
+          }
+
+          return {
+            ...tx,
+            weightChange,
+            weightChangePercent,
+            hasWeightLoss: true,
+            severity,
+          };
+        }
+
+        return {
+          ...tx,
+          weightChange,
+          weightChangePercent,
+          hasWeightLoss: false,
+        };
+      }
+
+      return { ...tx };
+    });
+
+    // Sort by timestamp (newest first)
+    transactionsWithHealth.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+    setFilteredTransactions(transactionsWithHealth);
   }, [searchQuery, selectedReason, selectedSession, transactions, entities, batches]);
 
   const formatDate = (date: Date): string => {
@@ -133,12 +195,12 @@ export default function WeighingHistoryScreen() {
 
   const formatCustomFieldValue = (value: any, fieldType?: string): string => {
     if (value === null || value === undefined) return '';
-    
+
     // Handle multi-select arrays
     if (Array.isArray(value)) {
       return value.join('; ');
     }
-    
+
     // Handle dates
     if (fieldType === 'date' && value) {
       try {
@@ -151,23 +213,23 @@ export default function WeighingHistoryScreen() {
         return String(value);
       }
     }
-    
+
     // Handle booleans
     if (typeof value === 'boolean') {
       return value ? 'Yes' : 'No';
     }
-    
+
     // Handle numbers
     if (typeof value === 'number') {
       return value.toString();
     }
-    
+
     return String(value);
   };
 
   const handleExport = async () => {
     const dataToExport = filteredTransactions.length > 0 ? filteredTransactions : transactions;
-    
+
     if (dataToExport.length === 0) {
       Alert.alert('No Data', 'There is no weighing history to export.');
       return;
@@ -176,7 +238,7 @@ export default function WeighingHistoryScreen() {
     try {
       // Collect all unique custom field definitions across all transactions
       const customFieldMap = new Map<string, { label: string; dataType: string }>();
-      
+
       dataToExport.forEach((tx) => {
         tx.custom_fields_definition_snapshot?.forEach((field) => {
           if (!customFieldMap.has(field.field_id)) {
@@ -203,11 +265,11 @@ export default function WeighingHistoryScreen() {
         'Estimated Weight',
         'Notes',
       ];
-      
+
       const customHeaders = Array.from(customFieldMap.entries())
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([fieldId, { label }]) => label);
-      
+
       const allHeaders = [...coreHeaders, ...customHeaders];
 
       // Build data rows
@@ -215,7 +277,7 @@ export default function WeighingHistoryScreen() {
         const entity = entities.get(tx.entity_id);
         const batch = batches.get(tx.batch_id);
         const txDate = new Date(tx.timestamp);
-        
+
         // Core fields
         const coreData = [
           txDate.toLocaleDateString('en-US', {
@@ -239,7 +301,7 @@ export default function WeighingHistoryScreen() {
           tx.is_estimated_weight ? 'Yes' : 'No',
           tx.notes || '',
         ];
-        
+
         // Custom fields (in same order as headers)
         const customData = Array.from(customFieldMap.keys())
           .sort()
@@ -248,13 +310,13 @@ export default function WeighingHistoryScreen() {
             const value = tx.custom_field_values?.[fieldId];
             return formatCustomFieldValue(value, fieldDef?.dataType);
           });
-        
+
         return [...coreData, ...customData];
       });
 
       // Create workbook
       const worksheet = XLSX.utils.aoa_to_sheet([allHeaders, ...rows]);
-      
+
       // Set column widths
       const colWidths = allHeaders.map((header, idx) => {
         const maxLength = Math.max(
@@ -264,7 +326,7 @@ export default function WeighingHistoryScreen() {
         return { wch: Math.min(Math.max(maxLength + 2, 10), 50) };
       });
       worksheet['!cols'] = colWidths;
-      
+
       // Style header row (bold)
       const headerRange = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
       for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
@@ -283,11 +345,11 @@ export default function WeighingHistoryScreen() {
 
       // Generate file
       const wbout = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-      
+
       // Create file path
       const fileName = `weighing-history-${new Date().toISOString().split('T')[0]}.xlsx`;
       const fileUri = `${FileSystem.documentDirectory}${fileName}`;
-      
+
       // Write file
       await FileSystem.writeAsStringAsync(fileUri, wbout, {
         encoding: FileSystem.EncodingType.Base64,
@@ -313,169 +375,169 @@ export default function WeighingHistoryScreen() {
     }
   };
 
+  const getSeverityVariant = (severity?: 'minor' | 'moderate' | 'severe'): 'warning' | 'error' => {
+    if (severity === 'severe') return 'error';
+    return 'warning';
+  };
+
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.background.primary }]}>
-        <ActivityIndicator size="large" color={theme.interactive.primary} />
+      <View style={[styles.container, { backgroundColor: theme.background.primary }]} testID="weighing-history-screen">
+        <LoadingState message="Loading weighing history..." testID="loading-history" />
       </View>
     );
   }
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.background.primary }]}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Text style={[styles.backButtonText, { color: theme.interactive.primary }]}>← Back</Text>
-          </TouchableOpacity>
-          {transactions.length > 0 && (
-            <TouchableOpacity
-              onPress={handleExport}
-              style={[styles.exportButton, { backgroundColor: theme.interactive.primary }]}
-            >
-              <Text style={[styles.exportButtonText, { color: theme.text.inverse }]}>Export</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <Text style={[styles.title, { color: theme.text.primary }]}>Weighing History</Text>
-        <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
-          {filteredTransactions.length} of {transactions.length} weighing{transactions.length !== 1 ? 's' : ''} shown
-        </Text>
-      </View>
+  const uniqueReasons = ['Arrival', 'Monthly', 'Shipment', 'Reweigh', 'Other'];
+  const uniqueBatches = Array.from(batches.values());
 
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background.primary }]} testID="weighing-history-screen">
+      <DetailScreenHeader
+        title="Weighing History"
+        subtitle={`${filteredTransactions.length} of ${transactions.length} weighing${transactions.length !== 1 ? 's' : ''} shown`}
+        action={
+          transactions.length > 0
+            ? {
+                label: 'Export',
+                onPress: handleExport,
+                variant: 'secondary',
+                icon: 'download-outline',
+                testID: 'export-button',
+              }
+            : undefined
+        }
+        testID="history-header"
+      />
+
+      {/* Search Input */}
       {transactions.length > 0 && (
-        <View style={[styles.filtersContainer, { backgroundColor: theme.background.secondary }]}>
-          <TextInput
-            style={[
-              styles.searchInput,
-              {
-                backgroundColor: theme.background.primary,
-                borderColor: theme.border.default,
-                color: theme.text.primary,
-              },
-            ]}
-            placeholder="Search by tag, name, breed, or session..."
-            placeholderTextColor={theme.text.tertiary}
+        <View style={styles.searchContainer}>
+          <SearchInput
             value={searchQuery}
             onChangeText={setSearchQuery}
+            placeholder="Search by tag, name, breed, or session..."
+            testID="history-search-input"
           />
+          <SecondaryButton
+            title={showFilters ? 'Hide Filters' : 'Show Filters'}
+            icon={showFilters ? 'chevron-up-outline' : 'chevron-down-outline'}
+            iconPosition="right"
+            onPress={() => setShowFilters(!showFilters)}
+            testID="toggle-filters-button"
+            style={styles.filterToggleButton}
+          />
+        </View>
+      )}
 
-          <View style={styles.filterRow}>
-            <View style={styles.filterGroup}>
-              <Text style={[styles.filterLabel, { color: theme.text.secondary }]}>Reason:</Text>
-              <View style={styles.filterButtons}>
+      {/* Filters */}
+      {showFilters && transactions.length > 0 && (
+        <Card variant="outlined" style={styles.filtersCard} testID="filters-card">
+          <View style={styles.filterSection}>
+            <Text style={[TEXT_STYLES.label, { color: theme.text.secondary, marginBottom: SPACING[2] }]}>
+              Reason:
+            </Text>
+            <View style={styles.filterButtons}>
+              <TouchableOpacity
+                onPress={() => setSelectedReason(null)}
+                style={[
+                  styles.filterButton,
+                  {
+                    backgroundColor:
+                      selectedReason === null ? theme.interactive.primary : theme.interactive.secondary,
+                    borderColor: theme.border.default,
+                  },
+                ]}
+                testID="filter-reason-all"
+              >
+                <Text
+                  style={[
+                    TEXT_STYLES.bodySmall,
+                    {
+                      color: selectedReason === null ? theme.text.inverse : theme.text.primary,
+                    },
+                  ]}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
+              {uniqueReasons.map((reason) => (
                 <TouchableOpacity
+                  key={reason}
+                  onPress={() => setSelectedReason(selectedReason === reason ? null : reason)}
                   style={[
                     styles.filterButton,
                     {
-                      backgroundColor: selectedReason === null
-                        ? theme.interactive.primary
-                        : theme.background.primary,
+                      backgroundColor:
+                        selectedReason === reason ? theme.interactive.primary : theme.interactive.secondary,
                       borderColor: theme.border.default,
                     },
                   ]}
-                  onPress={() => setSelectedReason(null)}
+                  testID={`filter-reason-${reason.toLowerCase()}`}
                 >
                   <Text
                     style={[
-                      styles.filterButtonText,
+                      TEXT_STYLES.bodySmall,
                       {
-                        color:
-                          selectedReason === null ? theme.text.inverse : theme.text.primary,
+                        color: selectedReason === reason ? theme.text.inverse : theme.text.primary,
                       },
                     ]}
                   >
-                    All
+                    {reason}
                   </Text>
                 </TouchableOpacity>
-                {['Arrival', 'Monthly', 'Shipment', 'Reweigh', 'Other'].map((reason) => (
-                  <TouchableOpacity
-                    key={reason}
-                    style={[
-                      styles.filterButton,
-                      {
-                        backgroundColor:
-                          selectedReason === reason
-                            ? theme.interactive.primary
-                            : theme.background.primary,
-                        borderColor: theme.border.default,
-                      },
-                    ]}
-                    onPress={() => setSelectedReason(selectedReason === reason ? null : reason)}
-                  >
-                    <Text
-                      style={[
-                        styles.filterButtonText,
-                        {
-                          color:
-                            selectedReason === reason ? theme.text.inverse : theme.text.primary,
-                        },
-                      ]}
-                    >
-                      {reason}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              ))}
             </View>
+          </View>
 
-            <View style={styles.filterGroup}>
-              <Text style={[styles.filterLabel, { color: theme.text.secondary }]}>Session:</Text>
-              <View style={styles.filterButtons}>
+          {uniqueBatches.length > 0 && (
+            <View style={styles.filterSection}>
+              <Text style={[TEXT_STYLES.label, { color: theme.text.secondary, marginBottom: SPACING[2] }]}>
+                Session:
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterButtons}>
                 <TouchableOpacity
+                  onPress={() => setSelectedSession(null)}
                   style={[
                     styles.filterButton,
                     {
-                      backgroundColor: selectedSession === null
-                        ? theme.interactive.primary
-                        : theme.background.primary,
+                      backgroundColor:
+                        selectedSession === null ? theme.interactive.primary : theme.interactive.secondary,
                       borderColor: theme.border.default,
                     },
                   ]}
-                  onPress={() => setSelectedSession(null)}
+                  testID="filter-session-all"
                 >
                   <Text
                     style={[
-                      styles.filterButtonText,
+                      TEXT_STYLES.bodySmall,
                       {
-                        color:
-                          selectedSession === null ? theme.text.inverse : theme.text.primary,
+                        color: selectedSession === null ? theme.text.inverse : theme.text.primary,
                       },
                     ]}
                   >
                     All
                   </Text>
                 </TouchableOpacity>
-                {Array.from(batches.values()).map((batch) => (
+                {uniqueBatches.map((batch) => (
                   <TouchableOpacity
                     key={batch.batch_id}
+                    onPress={() => setSelectedSession(selectedSession === batch.batch_id ? null : batch.batch_id)}
                     style={[
                       styles.filterButton,
                       {
                         backgroundColor:
-                          selectedSession === batch.batch_id
-                            ? theme.interactive.primary
-                            : theme.background.primary,
+                          selectedSession === batch.batch_id ? theme.interactive.primary : theme.interactive.secondary,
                         borderColor: theme.border.default,
                       },
                     ]}
-                    onPress={() =>
-                      setSelectedSession(
-                        selectedSession === batch.batch_id ? null : batch.batch_id
-                      )
-                    }
+                    testID={`filter-session-${batch.batch_id}`}
                   >
                     <Text
                       style={[
-                        styles.filterButtonText,
+                        TEXT_STYLES.bodySmall,
                         {
-                          color:
-                            selectedSession === batch.batch_id
-                              ? theme.text.inverse
-                              : theme.text.primary,
+                          color: selectedSession === batch.batch_id ? theme.text.inverse : theme.text.primary,
                         },
                       ]}
                     >
@@ -483,62 +545,125 @@ export default function WeighingHistoryScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
-              </View>
+              </ScrollView>
             </View>
-          </View>
-        </View>
+          )}
+        </Card>
       )}
 
+      {/* Transactions List or Empty State */}
       {transactions.length === 0 ? (
-        <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
-          <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-            No weighing history yet. Start weighing animals to see history here.
-          </Text>
-        </View>
+        <EmptyState
+          icon="time-outline"
+          message="No weighing history yet"
+          description="Start weighing animals to see history here. Your weighing history helps you track growth trends, monitor health, and analyze performance over time."
+          action={{
+            label: 'Start Weighing',
+            onPress: () => router.push('/(tabs)/weigh' as any),
+            testID: 'empty-state-start-weighing-button',
+          }}
+          testID="history-empty-state"
+        />
+      ) : filteredTransactions.length === 0 ? (
+        <EmptyState
+          icon="search-outline"
+          message="No transactions found"
+          description="Try adjusting your search or filter criteria."
+          testID="history-filtered-empty-state"
+        />
       ) : (
         <FlatList
           data={filteredTransactions}
           keyExtractor={(item) => item.tx_id}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.interactive.primary} />
+          }
           renderItem={({ item }) => {
             const entity = entities.get(item.entity_id);
             const batch = batches.get(item.batch_id);
 
             return (
-              <TouchableOpacity
-                activeOpacity={0.8}
+              <Card
+                variant="outlined"
                 onPress={() => router.push(`/transaction-detail?txId=${item.tx_id}`)}
-                style={[styles.historyCard, { backgroundColor: theme.background.secondary }]}
+                style={styles.transactionCard}
+                testID={`transaction-${item.tx_id}`}
               >
-                <View style={styles.historyHeader}>
-                  <View style={styles.historyInfo}>
-                    <Text style={[styles.animalTag, { color: theme.text.primary }]}>
-                      {entity?.primary_tag || 'Unknown'}
-                    </Text>
-                    <Text style={[styles.animalName, { color: theme.text.secondary }]}>
-                      {entity?.name || entity?.breed || 'No name'}
-                    </Text>
-                    {batch && (
-                      <Text style={[styles.sessionName, { color: theme.text.tertiary }]}>
-                        Session: {batch.name}
+                <View style={styles.transactionContent}>
+                  {/* Transaction Header */}
+                  <View style={styles.transactionHeader}>
+                    <View style={styles.transactionInfo}>
+                      <View style={styles.animalInfoRow}>
+                        <Text style={[TEXT_STYLES.h4, { color: theme.text.primary }]} testID={`tx-tag-${item.tx_id}`}>
+                          {entity?.primary_tag || 'Unknown'}
+                        </Text>
+                        {item.hasWeightLoss && item.severity && (
+                          <StatusBadge
+                            label={`${Math.abs(item.weightChangePercent || 0).toFixed(1)}% loss`}
+                            variant={getSeverityVariant(item.severity)}
+                            testID={`tx-weight-loss-badge-${item.tx_id}`}
+                          />
+                        )}
+                      </View>
+                      {entity?.name && (
+                        <Text style={[TEXT_STYLES.body, { color: theme.text.secondary }]} testID={`tx-name-${item.tx_id}`}>
+                          {entity.name}
+                        </Text>
+                      )}
+                      {batch && (
+                        <Text style={[TEXT_STYLES.bodySmall, { color: theme.text.tertiary }]} testID={`tx-session-${item.tx_id}`}>
+                          Session: {batch.name}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.weightContainer}>
+                      <Text style={[TEXT_STYLES.h2, { color: theme.interactive.primary }]} testID={`tx-weight-${item.tx_id}`}>
+                        {item.weight_kg.toFixed(1)} kg
                       </Text>
-                    )}
+                      {item.weightChange !== undefined && item.weightChange !== 0 && (
+                        <View style={styles.weightChangeRow}>
+                          <Ionicons
+                            name={item.weightChange > 0 ? 'arrow-up' : 'arrow-down'}
+                            size={14}
+                            color={item.weightChange > 0 ? theme.status.success : theme.status.error}
+                          />
+                          <Text
+                            style={[
+                              TEXT_STYLES.caption,
+                              {
+                                color: item.weightChange > 0 ? theme.status.success : theme.status.error,
+                                marginLeft: SPACING[1],
+                              },
+                            ]}
+                            testID={`tx-weight-change-${item.tx_id}`}
+                          >
+                            {item.weightChange > 0 ? '+' : ''}
+                            {item.weightChange.toFixed(1)} kg ({item.weightChangePercent && item.weightChangePercent > 0 ? '+' : ''}
+                            {item.weightChangePercent?.toFixed(1)}%)
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                  <View style={styles.weightContainer}>
-                    <Text style={[styles.weight, { color: theme.interactive.primary }]}>
-                      {item.weight_kg.toFixed(1)} kg
-                    </Text>
+
+                  {/* Transaction Footer */}
+                  <View style={styles.transactionFooter}>
+                    <View style={styles.footerRow}>
+                      <Ionicons name="time-outline" size={14} color={theme.text.tertiary} />
+                      <Text style={[TEXT_STYLES.bodySmall, { color: theme.text.tertiary, marginLeft: SPACING[2] }]}>
+                        {formatDate(item.timestamp)}
+                      </Text>
+                    </View>
+                    <View style={styles.footerRow}>
+                      <Ionicons name="flag-outline" size={14} color={theme.text.tertiary} />
+                      <Text style={[TEXT_STYLES.bodySmall, { color: theme.text.tertiary, marginLeft: SPACING[2] }]}>
+                        {item.reason}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-                <View style={styles.historyFooter}>
-                  <Text style={[styles.date, { color: theme.text.tertiary }]}>
-                    {formatDate(item.timestamp)}
-                  </Text>
-                  <Text style={[styles.reason, { color: theme.text.tertiary }]}>
-                    {item.reason}
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              </Card>
             );
           }}
         />
@@ -551,131 +676,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    padding: SPACING[4],
-    paddingTop: SPACING[12],
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING[2],
-  },
-  backButton: {
-    // No marginBottom needed as it's in flex row
-  },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  exportButton: {
+  searchContainer: {
     paddingHorizontal: SPACING[4],
-    paddingVertical: SPACING[2],
-    borderRadius: BORDER_RADIUS.md,
-  },
-  exportButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: SPACING[2],
-  },
-  subtitle: {
-    fontSize: 16,
-  },
-  listContent: {
-    padding: SPACING[4],
-    paddingBottom: SPACING[24],
-    gap: SPACING[3],
-  },
-  historyCard: {
-    padding: SPACING[4],
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: SPACING[2],
-  },
-  historyInfo: {
-    flex: 1,
-  },
-  animalTag: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: SPACING[1],
-  },
-  animalName: {
-    fontSize: 16,
-    marginBottom: SPACING[1],
-  },
-  sessionName: {
-    fontSize: 14,
-  },
-  weightContainer: {
-    alignItems: 'flex-end',
-  },
-  weight: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  historyFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: SPACING[2],
     paddingTop: SPACING[2],
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.1)',
+    gap: SPACING[2],
   },
-  date: {
-    fontSize: 14,
+  filterToggleButton: {
+    marginTop: SPACING[2],
   },
-  reason: {
-    fontSize: 14,
-    textTransform: 'capitalize',
-  },
-  emptyState: {
-    flex: 1,
-    padding: SPACING[6],
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    margin: SPACING[4],
-  },
-  emptyStateText: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  filtersContainer: {
-    padding: SPACING[4],
+  filtersCard: {
     marginHorizontal: SPACING[4],
-    marginBottom: SPACING[2],
-    borderRadius: BORDER_RADIUS.lg,
-  },
-  searchInput: {
-    borderWidth: 1,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING[3],
-    fontSize: 16,
-    marginBottom: SPACING[3],
-    minHeight: 48,
-  },
-  filterRow: {
-    gap: SPACING[3],
-  },
-  filterGroup: {
+    marginTop: SPACING[2],
     marginBottom: SPACING[2],
   },
-  filterLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: SPACING[2],
+  filterSection: {
+    marginBottom: SPACING[4],
   },
   filterButtons: {
     flexDirection: 'row',
@@ -683,14 +698,61 @@ const styles = StyleSheet.create({
     gap: SPACING[2],
   },
   filterButton: {
+    minWidth: 80,
     paddingHorizontal: SPACING[3],
     paddingVertical: SPACING[2],
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: 8,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: SPACING[12],
   },
-  filterButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+  listContent: {
+    padding: SPACING[4],
+    paddingBottom: SPACING[24],
+    gap: SPACING[3],
+  },
+  transactionCard: {
+    marginBottom: SPACING[3],
+  },
+  transactionContent: {
+    gap: SPACING[3],
+  },
+  transactionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  transactionInfo: {
+    flex: 1,
+    gap: SPACING[1],
+  },
+  animalInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING[2],
+    flexWrap: 'wrap',
+  },
+  weightContainer: {
+    alignItems: 'flex-end',
+    gap: SPACING[1],
+  },
+  weightChangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  transactionFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: SPACING[2],
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
+    flexWrap: 'wrap',
+    gap: SPACING[2],
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });
-

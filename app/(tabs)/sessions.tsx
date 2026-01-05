@@ -9,7 +9,9 @@ import { CustomFieldList } from '@/domain/entities/custom-field-list';
 import { container } from '@/infrastructure/di/container';
 import { useTheme } from '@/infrastructure/theme/theme-context';
 import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { TEXT_STYLES } from '@/shared/constants/typography';
 import { generateUUID } from '@/shared/utils/uuid';
+import { EmptyState } from '@/presentation/components/ui';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
@@ -201,11 +203,17 @@ export default function SessionsScreen() {
           </TouchableOpacity>
 
           {batches.length === 0 ? (
-            <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
-              <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-                No sessions yet. Create your first session to get started.
-              </Text>
-            </View>
+            <EmptyState
+              icon="calendar-outline"
+              message="No sessions yet"
+              description="Create your first session to start organizing and weighing animals. Sessions help you track weighings by date, type, or purpose."
+              action={{
+                label: 'Create Your First Session',
+                onPress: () => setShowCreateForm(true),
+                testID: 'empty-state-create-session-button',
+              }}
+              testID="sessions-empty-state"
+            />
           ) : (
             <View style={styles.batchesList}>
               {batches.map((batch) => (
@@ -242,7 +250,7 @@ export default function SessionsScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.actionButton, { backgroundColor: theme.interactive.secondary }]}
-                      onPress={() => router.push(`/weighing?batchId=${batch.batch_id}`)}
+                      onPress={() => router.push(`/(tabs)/weigh?batchId=${batch.batch_id}`)}
                     >
                       <Text style={[styles.actionButtonText, { color: theme.text.primary }]}>
                         Weigh Animals
@@ -311,11 +319,17 @@ export default function SessionsScreen() {
           <View style={styles.field}>
             <Text style={[styles.label, { color: theme.text.primary }]}>Custom Field List *</Text>
             {cfls.length === 0 ? (
-              <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
-                <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-                  No custom field lists. Create one in the Custom Fields tab first.
-                </Text>
-              </View>
+              <EmptyState
+                icon="list-outline"
+                message="No custom field lists available"
+                description="Create a custom field list in the Custom Fields tab first. Custom field lists define what additional information you want to capture during weighing."
+                action={{
+                  label: 'Go to Custom Fields',
+                  onPress: () => router.push('/(tabs)/custom-fields' as any),
+                  testID: 'empty-state-custom-fields-button',
+                }}
+                testID="no-cfls-empty-state"
+              />
             ) : (
               <View style={styles.cflList}>
                 {cfls.map((cfl) => (
@@ -388,12 +402,11 @@ const styles = StyleSheet.create({
     marginBottom: SPACING[6],
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    ...TEXT_STYLES.h1,
     marginBottom: SPACING[2],
   },
   subtitle: {
-    fontSize: 16,
+    ...TEXT_STYLES.body,
   },
   createButton: {
     paddingVertical: SPACING[4],
@@ -401,12 +414,11 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
     alignItems: 'center',
     marginBottom: SPACING[4],
-    minHeight: 56,
+    minHeight: SPACING[12] + SPACING[2], // 48 + 8 = 56pt minimum touch target
     justifyContent: 'center',
   },
   createButtonText: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    ...TEXT_STYLES.button,
   },
   batchesList: {
     gap: SPACING[3],
@@ -427,19 +439,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   batchName: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...TEXT_STYLES.h4,
     marginBottom: SPACING[1],
   },
   batchMeta: {
-    fontSize: 14,
+    ...TEXT_STYLES.bodySmall,
   },
   deleteButton: {
     padding: SPACING[2],
   },
   deleteButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...TEXT_STYLES.label,
   },
   batchActions: {
     flexDirection: 'row',
@@ -453,31 +463,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...TEXT_STYLES.label,
   },
   createForm: {
     marginBottom: SPACING[6],
   },
   formTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    ...TEXT_STYLES.h3,
     marginBottom: SPACING[4],
   },
   field: {
     marginBottom: SPACING[4],
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...TEXT_STYLES.label,
     marginBottom: SPACING[2],
   },
   input: {
     borderWidth: 2,
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING[4],
-    fontSize: 18,
-    minHeight: 56,
+    ...TEXT_STYLES.bodyLarge,
+    minHeight: SPACING[12] + SPACING[2], // 48 + 8 = 56pt minimum touch target
   },
   typeButtons: {
     flexDirection: 'row',
@@ -491,8 +498,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   typeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...TEXT_STYLES.label,
   },
   cflList: {
     gap: SPACING[2],
@@ -503,16 +509,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   cflItemText: {
-    fontSize: 16,
-  },
-  emptyState: {
-    padding: SPACING[6],
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    fontSize: 16,
-    textAlign: 'center',
+    ...TEXT_STYLES.body,
   },
   formActions: {
     flexDirection: 'row',
@@ -524,12 +521,11 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING[4],
     borderRadius: BORDER_RADIUS.lg,
     alignItems: 'center',
-    minHeight: 56,
+    minHeight: SPACING[12] + SPACING[2], // 48 + 8 = 56pt minimum touch target
     justifyContent: 'center',
   },
   buttonText: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    ...TEXT_STYLES.button,
   },
 });
 

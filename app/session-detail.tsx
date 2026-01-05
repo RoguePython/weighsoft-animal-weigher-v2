@@ -1,28 +1,24 @@
 /**
  * Session Detail Screen
- * 
+ *
  * View all animals weighed in a specific session, grouped by batches (animal groups).
+ * Redesigned with standardized detail screen components.
  */
 
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  ActivityIndicator,
-  FlatList,
-  TouchableOpacity,
-} from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/infrastructure/theme/theme-context';
-import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { SPACING } from '@/shared/constants/spacing';
+import { TEXT_STYLES } from '@/shared/constants/typography';
 import { container } from '@/infrastructure/di/container';
 import { Batch } from '@/domain/entities/batch';
 import { Entity } from '@/domain/entities/entity';
 import { Transaction } from '@/domain/entities/transaction';
 import { AnimalGroup } from '@/domain/entities/animal-group';
-import { Alert } from 'react-native';
+import { DetailCard, DetailScreenHeader } from '@/presentation/components';
+import { Card, EmptyState, LoadingState } from '@/presentation/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 
@@ -73,12 +69,10 @@ export default function SessionDetailScreen() {
 
       // Load all transactions for this session
       const sessionTransactions = await transactionRepo.findByBatchId(params.batchId);
-      
+
       // Load entities for all transactions
       const entityIds = [...new Set(sessionTransactions.map((t) => t.entity_id))];
-      const entities = await Promise.all(
-        entityIds.map((id) => entityRepo.findById(id))
-      );
+      const entities = await Promise.all(entityIds.map((id) => entityRepo.findById(id)));
       const entityMap = new Map<string, Entity>();
       entities.forEach((entity) => {
         if (entity) entityMap.set(entity.entity_id, entity);
@@ -102,10 +96,10 @@ export default function SessionDetailScreen() {
 
       // Group by animal groups
       const grouped = new Map<string, TransactionWithEntity[]>();
-      
+
       transactionsWithEntities.forEach((tx) => {
         const groups = entityGroupsMap.get(tx.entity_id) || [];
-        
+
         if (groups.length === 0) {
           // No groups - put in "Ungrouped"
           const groupName = 'Ungrouped';
@@ -127,9 +121,7 @@ export default function SessionDetailScreen() {
       // Convert to array and sort
       const groupedArray: GroupedTransaction[] = Array.from(grouped.entries()).map(([groupName, txs]) => ({
         groupName,
-        transactions: txs.sort((a, b) => 
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        ),
+        transactions: txs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
       }));
 
       // Sort groups: Ungrouped last
@@ -159,84 +151,121 @@ export default function SessionDetailScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.background.primary }]}>
-        <ActivityIndicator size="large" color={theme.interactive.primary} />
+      <View style={[styles.container, { backgroundColor: theme.background.primary }]} testID="session-detail-screen">
+        <LoadingState message="Loading session details..." testID="loading-session" />
       </View>
     );
   }
 
   if (!session) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.background.primary }]}>
-        <Text style={{ color: theme.text.primary, textAlign: 'center' }}>Session not found.</Text>
+      <View style={[styles.container, { backgroundColor: theme.background.primary }]} testID="session-detail-screen">
+        <EmptyState
+          icon="alert-circle-outline"
+          message="Session not found"
+          description="The session you're looking for doesn't exist or has been deleted."
+          testID="session-not-found"
+        />
       </View>
     );
   }
+
+  const subtitle = `${session.type} • ${session.status} • ${transactions.length} weighing${transactions.length !== 1 ? 's' : ''}`;
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.background.primary }]}
       contentContainerStyle={styles.content}
+      testID="session-detail-screen"
     >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={[styles.backButtonText, { color: theme.interactive.primary }]}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: theme.text.primary }]}>{session.name}</Text>
-        <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
-          {session.type} • {session.status} • {transactions.length} weighing{transactions.length !== 1 ? 's' : ''}
-        </Text>
-        <Text style={[styles.date, { color: theme.text.tertiary }]}>
-          Created: {new Date(session.created_at).toLocaleDateString()}
-        </Text>
-      </View>
+      <DetailScreenHeader
+        title={session.name}
+        subtitle={subtitle}
+        action={{
+          label: 'Weigh Animals',
+          onPress: () => router.push(`/(tabs)/weigh?batchId=${session.batch_id}` as any),
+          variant: 'primary',
+          icon: 'scale-outline',
+          testID: 'weigh-animals-button',
+        }}
+        testID="session-detail-header"
+      />
 
+      {/* Session Information */}
+      <DetailCard
+        title="Session Information"
+        items={[
+          { label: 'Type', value: session.type, icon: 'calendar-outline' },
+          { label: 'Status', value: session.status, showAsBadge: true, badgeVariant: 'info' },
+          { label: 'Created', value: new Date(session.created_at).toLocaleDateString(), icon: 'time-outline' },
+          { label: 'Total Weighings', value: `${transactions.length}`, icon: 'scale-outline' },
+        ]}
+        testID="session-info-card"
+      />
+
+      {/* Transactions by Group */}
       {transactions.length === 0 ? (
-        <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
-          <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-            No animals have been weighed in this session yet.
-          </Text>
-        </View>
+        <DetailCard title="Weighings" testID="weighings-card">
+          <EmptyState
+            icon="scale-outline"
+            message="No weighings yet"
+            description="No animals have been weighed in this session yet. Start weighing animals to record their weights and track progress."
+            action={{
+              label: 'Weigh Animals',
+              onPress: () => router.push(`/(tabs)/weigh?batchId=${session.batch_id}` as any),
+              testID: 'empty-state-weigh-animals-button',
+            }}
+            testID="no-weighings-empty-state"
+          />
+        </DetailCard>
       ) : (
         <View style={styles.transactionsContainer}>
           {groupedTransactions.map((group) => (
-            <View key={group.groupName} style={styles.groupSection}>
-              <Text style={[styles.groupTitle, { color: theme.text.primary }]}>
-                {group.groupName === 'Ungrouped' ? 'Ungrouped Animals' : group.groupName} ({group.transactions.length})
-              </Text>
-              {group.transactions.map((tx) => (
-                <TouchableOpacity
-                  key={tx.tx_id}
-                  style={[styles.transactionCard, { backgroundColor: theme.background.secondary }]}
-                  onPress={() => router.push(`/transaction-detail?txId=${tx.tx_id}`)}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.transactionHeader}>
-                    <View style={styles.transactionInfo}>
-                      <Text style={[styles.animalTag, { color: theme.text.primary }]}>
-                        {tx.entity?.primary_tag || 'Unknown'}
-                      </Text>
-                      <Text style={[styles.animalName, { color: theme.text.secondary }]}>
-                        {tx.entity?.name || tx.entity?.breed || 'No name'}
-                      </Text>
+            <DetailCard
+              key={group.groupName}
+              title={group.groupName === 'Ungrouped' ? 'Ungrouped Animals' : group.groupName}
+              description={`${group.transactions.length} weighing${group.transactions.length !== 1 ? 's' : ''}`}
+              testID={`group-${group.groupName}-card`}
+            >
+              <View style={styles.transactionsList}>
+                {group.transactions.map((tx) => (
+                  <Card
+                    key={tx.tx_id}
+                    variant="outlined"
+                    onPress={() => router.push(`/transaction-detail?txId=${tx.tx_id}`)}
+                    style={styles.transactionCard}
+                    testID={`transaction-${tx.tx_id}`}
+                  >
+                    <View style={styles.transactionContent}>
+                      <View style={styles.transactionHeader}>
+                        <View style={styles.transactionInfo}>
+                          <Text style={[TEXT_STYLES.h4, { color: theme.text.primary }]}>
+                            {tx.entity?.primary_tag || 'Unknown'}
+                          </Text>
+                          <Text style={[TEXT_STYLES.bodySmall, { color: theme.text.secondary, marginTop: SPACING[1] }]}>
+                            {tx.entity?.name || tx.entity?.breed || 'No name'}
+                          </Text>
+                        </View>
+                        <View style={styles.weightContainer}>
+                          <Text style={[TEXT_STYLES.h3, { color: theme.interactive.primary }]}>
+                            {tx.weight_kg.toFixed(1)} kg
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color={theme.text.tertiary} />
+                      </View>
+                      <View style={styles.transactionFooter}>
+                        <Text style={[TEXT_STYLES.caption, { color: theme.text.tertiary }]}>
+                          {formatDate(tx.timestamp)}
+                        </Text>
+                        <Text style={[TEXT_STYLES.caption, { color: theme.text.tertiary, textTransform: 'capitalize' }]}>
+                          {tx.reason}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.weightContainer}>
-                      <Text style={[styles.weight, { color: theme.interactive.primary }]}>
-                        {tx.weight_kg.toFixed(1)} kg
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.transactionFooter}>
-                    <Text style={[styles.dateText, { color: theme.text.tertiary }]}>
-                      {formatDate(tx.timestamp)}
-                    </Text>
-                    <Text style={[styles.reason, { color: theme.text.tertiary }]}>
-                      {tx.reason}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  </Card>
+                ))}
+              </View>
+            </DetailCard>
           ))}
         </View>
       )}
@@ -253,97 +282,37 @@ const styles = StyleSheet.create({
     paddingTop: SPACING[12],
     paddingBottom: SPACING[24],
   },
-  header: {
-    marginBottom: SPACING[6],
-  },
-  backButton: {
-    marginBottom: SPACING[2],
-  },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: SPACING[2],
-  },
-  subtitle: {
-    fontSize: 16,
-    marginBottom: SPACING[1],
-  },
-  date: {
-    fontSize: 14,
-  },
-  emptyState: {
-    padding: SPACING[6],
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
   transactionsContainer: {
     gap: SPACING[4],
   },
-  groupSection: {
-    marginBottom: SPACING[4],
-  },
-  groupTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: SPACING[3],
-    paddingBottom: SPACING[2],
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
+  transactionsList: {
+    gap: SPACING[2],
+    marginTop: SPACING[2],
   },
   transactionCard: {
-    padding: SPACING[4],
-    borderRadius: BORDER_RADIUS.lg,
     marginBottom: SPACING[2],
-    borderWidth: 1,
-    borderColor: 'transparent',
+  },
+  transactionContent: {
+    gap: SPACING[2],
   },
   transactionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: SPACING[2],
   },
   transactionInfo: {
     flex: 1,
   },
-  animalTag: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: SPACING[1],
-  },
-  animalName: {
-    fontSize: 16,
-  },
   weightContainer: {
     alignItems: 'flex-end',
-  },
-  weight: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    marginRight: SPACING[2],
   },
   transactionFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: SPACING[2],
     paddingTop: SPACING[2],
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.1)',
-  },
-  dateText: {
-    fontSize: 14,
-  },
-  reason: {
-    fontSize: 14,
-    textTransform: 'capitalize',
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
   },
 });
-

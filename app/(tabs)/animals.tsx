@@ -2,25 +2,28 @@
  * Animals Tab - Manage Animals
  *
  * Create, view, edit, and manage animals. Assign animals to sessions.
+ * Redesigned with new component library for better UX.
  */
 
 import { Batch } from '@/domain/entities/batch';
 import { Entity } from '@/domain/entities/entity';
 import { container } from '@/infrastructure/di/container';
 import { useTheme } from '@/infrastructure/theme/theme-context';
-import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { SPACING } from '@/shared/constants/spacing';
+import { TEXT_STYLES } from '@/shared/constants/typography';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+import { AnimalCard } from '@/presentation/components';
 import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+  EmptyState,
+  LoadingState,
+  PrimaryButton,
+  SecondaryButton,
+} from '@/presentation/components/ui';
+import { SearchInput } from '@/presentation/components/ui/input';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 const DEFAULT_USER_ID = 'default-user';
@@ -29,6 +32,7 @@ export default function AnimalsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [animals, setAnimals] = useState<Entity[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,6 +64,12 @@ export default function AnimalsScreen() {
       loadData();
     }, [loadData])
   );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  }, [loadData]);
 
   const handleDeleteAnimal = async (animal: Entity) => {
     Alert.alert('Delete Animal', `Are you sure you want to delete "${animal.primary_tag}"?`, [
@@ -109,20 +119,35 @@ export default function AnimalsScreen() {
     ]);
   };
 
+  const handleQuickWeigh = (animal: Entity) => {
+    // Find an open session for this animal, or navigate to weigh screen
+    const animalBatch = batches.find((b) => b.batch_id === animal.current_group);
+    if (animalBatch && (animalBatch.status === 'Open' || animalBatch.status === 'Draft')) {
+      router.push(`/(tabs)/weigh?batchId=${animalBatch.batch_id}` as any);
+    } else {
+      // Navigate to weigh screen and let user select session
+      router.push('/(tabs)/weigh' as any);
+    }
+  };
+
   const filteredAnimals = animals.filter((animal) => {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     return (
       animal.primary_tag.toLowerCase().includes(query) ||
       animal.name?.toLowerCase().includes(query) ||
-      animal.breed?.toLowerCase().includes(query)
+      animal.breed?.toLowerCase().includes(query) ||
+      animal.rfid_tag?.toLowerCase().includes(query)
     );
   });
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.background.primary }]}>
-        <ActivityIndicator size="large" color={theme.interactive.primary} />
+      <View
+        style={[styles.container, { backgroundColor: theme.background.primary }]}
+        testID="animals-screen"
+      >
+        <LoadingState message="Loading animals..." testID="animals-loading-state" />
       </View>
     );
   }
@@ -131,104 +156,95 @@ export default function AnimalsScreen() {
     <ScrollView
       style={[styles.container, { backgroundColor: theme.background.primary }]}
       contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.interactive.primary} />
+      }
+      testID="animals-screen"
     >
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text.primary }]}>Animals</Text>
-        <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
+        <Text style={[TEXT_STYLES.h1, { color: theme.text.primary }]} testID="animals-title">
+          Animals
+        </Text>
+        <Text style={[TEXT_STYLES.bodySmall, { color: theme.text.secondary, marginTop: SPACING[2] }]}>
           Manage your animals
         </Text>
-        <TouchableOpacity
-          style={[styles.historyButton, { backgroundColor: theme.interactive.secondary }]}
-          onPress={() => router.push('/weighing-history')}
-        >
-          <Text style={[styles.historyButtonText, { color: theme.text.primary }]}>
-            View All Weighing History
-          </Text>
-        </TouchableOpacity>
       </View>
 
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={[
-            styles.searchInput,
-            {
-              backgroundColor: theme.background.secondary,
-              borderColor: theme.border.default,
-              color: theme.text.primary,
-            },
-          ]}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search by tag or name..."
-          placeholderTextColor={theme.text.tertiary}
-        />
-      </View>
+      {/* Search Input */}
+      <SearchInput
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Search by tag, name, breed, or RFID..."
+        testID="animals-search-input"
+        containerStyle={styles.searchContainer}
+      />
 
-      <TouchableOpacity
-        style={[styles.createButton, { backgroundColor: theme.interactive.primary }]}
+      {/* Add Animal Button */}
+      <PrimaryButton
+        title="Add Animal"
+        icon="add-circle"
+        iconPosition="left"
         onPress={() => router.push('/entity-setup')}
-      >
-        <Text style={[styles.createButtonText, { color: theme.text.inverse }]}>
-          + Add Animal
-        </Text>
-      </TouchableOpacity>
+        testID="animals-add-button"
+        style={styles.addButton}
+      />
 
+      {/* Animals List or Empty State */}
       {filteredAnimals.length === 0 ? (
-        <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
-          <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-            {searchQuery ? 'No animals found' : 'No animals yet. Add your first animal to get started.'}
-          </Text>
-        </View>
+        <EmptyState
+          icon={searchQuery ? 'search-outline' : 'paw-outline'}
+          message={searchQuery ? 'No animals found' : 'No animals yet'}
+          description={
+            searchQuery
+              ? 'Try adjusting your search terms or add a new animal to your herd.'
+              : 'Add your first animal to start tracking weights, monitoring health, and managing your herd. You can add animals individually or import them in bulk.'
+          }
+          action={
+            !searchQuery
+              ? {
+                  label: 'Add Your First Animal',
+                  onPress: () => router.push('/entity-setup'),
+                  testID: 'animals-empty-state-add-button',
+                }
+              : undefined
+          }
+          testID="animals-empty-state"
+        />
       ) : (
         <View style={styles.animalsList}>
           {filteredAnimals.map((animal) => {
             const batch = batches.find((b) => b.batch_id === animal.current_group);
             return (
-              <TouchableOpacity
-                key={animal.entity_id}
-                style={[styles.animalCard, { backgroundColor: theme.background.secondary }]}
-                activeOpacity={0.8}
-                onPress={() => router.push(`/entity-detail?entityId=${animal.entity_id}`)}
-              >
-                <View style={styles.animalHeader}>
-                  <View style={styles.animalInfo}>
-                    <Text style={[styles.animalName, { color: theme.text.primary }]}>
-                      {animal.name || animal.breed || 'No name'}
-                    </Text>
-                    <Text style={[styles.animalTag, { color: theme.text.secondary }]}>
-                      Tag: {animal.primary_tag}
-                    </Text>
-                    {batch && (
-                      <Text style={[styles.animalBatch, { color: theme.text.tertiary }]}>
-                        Session: {batch.name}
-                      </Text>
-                    )}
-                  </View>
+              <View key={animal.entity_id} style={styles.animalCardWrapper}>
+                <AnimalCard
+                  animal={animal}
+                  onPress={() => router.push(`/entity-detail?entityId=${animal.entity_id}`)}
+                  onQuickWeigh={() => handleQuickWeigh(animal)}
+                  onViewHistory={() => router.push(`/entity-detail?entityId=${animal.entity_id}`)}
+                  onEdit={() => router.push(`/entity-setup?entityId=${animal.entity_id}`)}
+                  showQuickActions={true}
+                  testID={`animal-card-${animal.entity_id}`}
+                />
+
+                {/* Additional Actions */}
+                <View style={styles.additionalActions}>
+                  <SecondaryButton
+                    title={animal.current_group ? 'Change Session' : 'Assign to Session'}
+                    icon="layers-outline"
+                    iconPosition="left"
+                    onPress={() => handleAssignToBatch(animal)}
+                    testID={`animal-assign-${animal.entity_id}`}
+                    style={styles.assignButton}
+                  />
                   <TouchableOpacity
                     onPress={() => handleDeleteAnimal(animal)}
                     style={styles.deleteButton}
+                    testID={`animal-delete-${animal.entity_id}`}
                   >
-                    <Text style={[styles.deleteButtonText, { color: theme.status.error }]}>Delete</Text>
+                    <Ionicons name="trash-outline" size={20} color={theme.status.error} />
                   </TouchableOpacity>
                 </View>
-
-                <View style={styles.animalActions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: theme.interactive.secondary }]}
-                    onPress={() => router.push(`/entity-setup?entityId=${animal.entity_id}`)}
-                  >
-                    <Text style={[styles.actionButtonText, { color: theme.text.primary }]}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: theme.interactive.secondary }]}
-                    onPress={() => handleAssignToBatch(animal)}
-                  >
-                    <Text style={[styles.actionButtonText, { color: theme.text.primary }]}>
-                      {animal.current_group ? 'Change Session' : 'Assign to Session'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
+              </View>
             );
           })}
         </View>
@@ -249,108 +265,32 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: SPACING[6],
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: SPACING[2],
-  },
-  subtitle: {
-    fontSize: 16,
-  },
   searchContainer: {
     marginBottom: SPACING[4],
   },
-  searchInput: {
-    borderWidth: 2,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING[4],
-    fontSize: 18,
-    minHeight: 56,
-  },
-  createButton: {
-    paddingVertical: SPACING[4],
-    paddingHorizontal: SPACING[4],
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
+  addButton: {
     marginBottom: SPACING[4],
-    minHeight: 56,
-    justifyContent: 'center',
-  },
-  createButtonText: {
-    fontSize: 18,
-    fontWeight: 'bold',
   },
   animalsList: {
     gap: SPACING[3],
   },
-  animalCard: {
-    padding: SPACING[4],
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  animalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  animalCardWrapper: {
     marginBottom: SPACING[3],
   },
-  animalInfo: {
+  additionalActions: {
+    flexDirection: 'row',
+    gap: SPACING[2],
+    marginTop: SPACING[2],
+    alignItems: 'center',
+  },
+  assignButton: {
     flex: 1,
-  },
-  animalTag: {
-    fontSize: 14,
-    marginBottom: SPACING[1],
-  },
-  animalName: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: SPACING[1],
-  },
-  animalBatch: {
-    fontSize: 14,
   },
   deleteButton: {
     padding: SPACING[2],
-  },
-  deleteButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  animalActions: {
-    flexDirection: 'row',
-    gap: SPACING[2],
-  },
-  actionButton: {
-    flex: 1,
-    paddingVertical: SPACING[3],
-    paddingHorizontal: SPACING[3],
-    borderRadius: BORDER_RADIUS.md,
+    minWidth: SPACING[12], // 48pt minimum
+    minHeight: SPACING[12],
     alignItems: 'center',
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  emptyState: {
-    padding: SPACING[6],
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  historyButton: {
-    paddingVertical: SPACING[2],
-    paddingHorizontal: SPACING[3],
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-    marginTop: SPACING[2],
-  },
-  historyButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+    justifyContent: 'center',
   },
 });
-

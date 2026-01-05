@@ -100,11 +100,13 @@ Make faster, smarter decisions about animal performance, health, and commercial 
   - Search and filter capabilities in history view
 
 - 🎨 **User Interface**
-  - Modern, intuitive design
+  - Modern, intuitive design with consistent component library
   - Light/Dark theme support
   - Responsive layout for mobile and web
-  - Floating tab bar with custom icons
-  - Consistent spacing and typography
+  - Streamlined 4-tab navigation (Home, Weigh, Animals, More)
+  - Consistent spacing, typography, and visual hierarchy
+  - Improved empty states with helpful guidance
+  - Micro-interactions and haptic feedback
 
 - 🔄 **Data Management**
   - Automatic data refresh on screen focus
@@ -120,12 +122,10 @@ Make faster, smarter decisions about animal performance, health, and commercial 
 
 ### Main Screens
 
-- **Animals Tab**: List view of all animals with search and filter
-- **Sessions Tab**: Manage weighing sessions with batch operations
-- **Batches Tab**: Create and manage animal groups
-- **Weighing Tab**: Real-time weight capture with history display
-- **History Tab**: Complete transaction history with export
-- **Custom Fields Tab**: Configure metadata fields for sessions
+- **Home Tab**: Dashboard with quick actions, key metrics, recent activity, and open sessions
+- **Weigh Tab**: Simplified weighing workflow (Select Session → Select Animal → Weigh)
+- **Animals Tab**: List view of all animals with search, filter, and quick actions
+- **More Tab**: Secondary features menu (Sessions, Groups, Custom Fields, History, Analytics, Settings)
 
 ### Key Workflows
 
@@ -282,45 +282,48 @@ For production, these should be configured through environment variables or a se
 
 1. **Create Animals**
    - Navigate to **Animals** tab
-   - Tap **+ Create New Animal**
+   - Tap **+ Create New Animal** (or use quick action from Home)
    - Enter animal details (tag, name, species, breed, etc.)
    - Save the animal
 
 2. **Create a Weighing Session**
-   - Navigate to **Sessions** tab
-   - Tap **+ Create New Session**
+   - Navigate to **More** tab → **Sessions**
+   - Tap **Create Session** button
    - Enter session name and select type
    - Choose a custom field list
    - Create the session
 
-3. **Weigh Animals**
-   - Navigate to **Weighing** tab
-   - Select a session
-   - Select an animal (or create new)
-   - View previous weight (if available)
+3. **Weigh Animals** (Simplified Workflow)
+   - Navigate to **Weigh** tab
+   - Select a session (or create new)
+   - Select an animal (search, recent animals, or quick create)
+   - View previous weight automatically displayed
    - Enter current weight
    - Fill in custom fields
-   - Save the transaction
+   - Save the transaction (with success feedback)
 
 4. **View History**
-   - Navigate to **History** tab
+   - Navigate to **More** tab → **History**
    - View all weighing transactions
    - Search and filter by various criteria
    - Export to Excel for analysis
 
 5. **Manage Animal Groups**
-   - Navigate to **Batches** tab
+   - Navigate to **More** tab → **Batches/Groups**
    - Create new groups
    - Add animals to groups
    - View animals by group in sessions
 
 ### Advanced Features
 
-- **Custom Fields**: Configure field lists in **Custom Fields** tab
-- **Animal Groups**: Organize animals into logical groups
-- **Session Details**: View all animals weighed in a session
+- **Custom Fields**: Configure field lists via **More** → **Custom Fields**
+- **Animal Groups**: Organize animals into logical groups via **More** → **Batches/Groups**
+- **Session Details**: View all animals weighed in a session (from Sessions list)
 - **Transaction Details**: View complete details of individual weigh events
 - **Export Data**: Export weighing history to formatted Excel files
+- **Quick Actions**: Quick weigh, view history, and edit from animal cards
+- **Dashboard**: Home tab provides overview with key metrics and quick access
+- **Analytics**: Growth Tracking, Health Monitoring, Ready to Sell, Feed Comparison (via More menu)
 
 ---
 
@@ -330,13 +333,15 @@ For production, these should be configured through environment variables or a se
 weighsoft-animal-weigher-v2/
 ├── app/                          # Expo Router pages
 │   ├── (tabs)/                  # Tab navigation screens
+│   │   ├── index.tsx            # Home dashboard
+│   │   ├── weigh.tsx            # Simplified weighing workflow
 │   │   ├── animals.tsx          # Animals list and management
-│   │   ├── batches.tsx          # Animal groups management
-│   │   ├── sessions.tsx         # Weighing sessions
-│   │   ├── weighing.tsx         # Weight capture screen
-│   │   ├── history.tsx          # Transaction history
-│   │   ├── custom-fields.tsx    # Custom field configuration
-│   │   └── _layout.tsx          # Tab bar configuration
+│   │   ├── more.tsx             # Secondary features menu
+│   │   └── _layout.tsx          # Tab bar configuration (4 tabs)
+│   ├── sessions-list.tsx        # Sessions list (from More menu)
+│   ├── batches-list.tsx         # Groups list (from More menu)
+│   ├── custom-fields-list.tsx   # Custom fields list (from More menu)
+│   ├── weighing-history.tsx     # Full history with export
 │   ├── entity-detail.tsx        # Animal detail view
 │   ├── entity-setup.tsx         # Create/edit animal
 │   ├── group-detail.tsx         # Group management
@@ -351,6 +356,7 @@ weighsoft-animal-weigher-v2/
 │   ├── domain/                  # Business logic layer
 │   │   ├── entities/           # Domain entities
 │   │   ├── repositories/       # Repository interfaces
+│   │   ├── services/           # Domain services (health detection, etc.)
 │   │   └── usecases/           # Business use cases
 │   ├── data/                    # Data access layer
 │   │   └── repositories/       # Repository implementations
@@ -358,9 +364,14 @@ weighsoft-animal-weigher-v2/
 │   │   ├── database/           # SQLite database manager
 │   │   ├── di/                  # Dependency injection
 │   │   └── theme/               # Theme system
+│   ├── presentation/            # Presentation layer
+│   │   ├── components/         # Reusable components
+│   │   │   ├── ui/             # UI components (buttons, cards, inputs)
+│   │   │   └── ...             # Domain-specific components
+│   │   └── screens/            # Screen components
 │   └── shared/                  # Shared utilities
-│       ├── constants/          # Constants (spacing, etc.)
-│       └── utils/              # Utility functions
+│       ├── constants/          # Constants (spacing, typography, etc.)
+│       └── utils/              # Utility functions (haptics, etc.)
 │
 ├── assets/                      # Static assets
 │   ├── images/                 # Image files

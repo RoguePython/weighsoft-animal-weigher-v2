@@ -2,17 +2,12 @@
  * Animal Detail Screen (Read-Only)
  *
  * View an animal's core info and full weighing history without editing.
+ * Redesigned with standardized detail screen components.
  */
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { Batch } from '@/domain/entities/batch';
 import { Entity } from '@/domain/entities/entity';
@@ -20,6 +15,10 @@ import { Transaction } from '@/domain/entities/transaction';
 import { container } from '@/infrastructure/di/container';
 import { useTheme } from '@/infrastructure/theme/theme-context';
 import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { TEXT_STYLES } from '@/shared/constants/typography';
+import { DetailCard, DetailScreenHeader } from '@/presentation/components';
+import { Card, EmptyState, LoadingState } from '@/presentation/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 
 const DEFAULT_TENANT_ID = 'default-tenant';
 
@@ -68,9 +67,7 @@ export default function EntityDetailScreen() {
       setWeighingHistory(transactions);
 
       const batchIds = [...new Set(transactions.map((t) => t.batch_id))];
-      const batchResults = await Promise.all(
-        batchIds.map((id) => batchRepo.findById(id)),
-      );
+      const batchResults = await Promise.all(batchIds.map((id) => batchRepo.findById(id)));
 
       const batchMap = new Map<string, Batch>();
       batchResults.forEach((batch) => {
@@ -99,84 +96,123 @@ export default function EntityDetailScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.background.primary }]}>
-        <ActivityIndicator size="large" color={theme.interactive.primary} />
+      <View style={[styles.container, { backgroundColor: theme.background.primary }]} testID="entity-detail-screen">
+        <LoadingState message="Loading animal details..." testID="loading-entity" />
       </View>
     );
   }
 
   if (!entity) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.background.primary }]}>
-        <Text style={{ color: theme.text.primary, textAlign: 'center' }}>
-          Animal not found.
-        </Text>
+      <View style={[styles.container, { backgroundColor: theme.background.primary }]} testID="entity-detail-screen">
+        <EmptyState
+          icon="alert-circle-outline"
+          message="Animal not found"
+          description="The animal you're looking for doesn't exist or has been deleted."
+          testID="entity-not-found"
+        />
       </View>
     );
   }
 
   const displayName = entity.name || entity.breed || 'No name';
+  const subtitle = `Tag: ${entity.primary_tag}${entity.target_weight_kg ? ` • Target: ${entity.target_weight_kg} kg` : ''}`;
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.background.primary }]}
       contentContainerStyle={styles.content}
+      testID="entity-detail-screen"
     >
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text.primary }]}>{displayName}</Text>
-        <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
-          Tag: {entity.primary_tag}
-        </Text>
-        {entity.target_weight_kg && (
-          <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
-            Target weight: {entity.target_weight_kg} kg
-          </Text>
-        )}
-      </View>
+      <DetailScreenHeader
+        title={displayName}
+        subtitle={subtitle}
+        action={{
+          label: 'Edit',
+          onPress: () => router.push(`/entity-setup?entityId=${entity.entity_id}`),
+          variant: 'primary',
+          icon: 'create-outline',
+          testID: 'edit-entity-button',
+        }}
+        testID="entity-detail-header"
+      />
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>
-          Weighing History
-        </Text>
+      {/* Animal Information */}
+      <DetailCard
+        title="Animal Information"
+        items={[
+          { label: 'Tag', value: entity.primary_tag, icon: 'pricetag-outline' },
+          { label: 'Status', value: entity.status, showAsBadge: true, badgeVariant: 'success' },
+          ...(entity.rfid_tag ? [{ label: 'RFID', value: entity.rfid_tag, icon: 'radio-outline' }] : []),
+          ...(entity.breed ? [{ label: 'Breed', value: entity.breed, icon: 'paw-outline' }] : []),
+          ...(entity.species ? [{ label: 'Species', value: entity.species, icon: 'paw-outline' }] : []),
+          ...(entity.sex && entity.sex !== 'Unknown' ? [{ label: 'Sex', value: entity.sex, icon: 'person-outline' }] : []),
+          ...(entity.target_weight_kg ? [{ label: 'Target Weight', value: `${entity.target_weight_kg} kg`, icon: 'scale-outline' }] : []),
+        ]}
+        testID="animal-info-card"
+      />
+
+      {/* Weighing History */}
+      <DetailCard
+        title="Weighing History"
+        description={`${weighingHistory.length} weighing${weighingHistory.length !== 1 ? 's' : ''} recorded`}
+        testID="weighing-history-card"
+      >
         {loadingHistory ? (
-          <ActivityIndicator size="small" color={theme.interactive.primary} />
+          <LoadingState message="Loading history..." testID="loading-history" />
         ) : weighingHistory.length === 0 ? (
-          <View style={[styles.emptyHistory, { backgroundColor: theme.background.secondary }]}>
-            <Text style={[styles.emptyHistoryText, { color: theme.text.secondary }]}>
-              No weighing history yet. This animal hasn't been weighed.
-            </Text>
-          </View>
+          <EmptyState
+            icon="scale-outline"
+            message="No weighing history yet"
+            description="This animal hasn't been weighed yet. Start a weighing session to record weights and track growth over time."
+            action={{
+              label: 'Start Weighing',
+              onPress: () => router.push('/(tabs)/weigh' as any),
+              testID: 'empty-state-start-weighing-button',
+            }}
+            testID="no-history-empty-state"
+          />
         ) : (
-          weighingHistory.map((tx) => {
-            const batch = batches.get(tx.batch_id);
-            return (
-              <View
-                key={tx.tx_id}
-                style={[styles.historyItem, { backgroundColor: theme.background.secondary }]}
-              >
-                <View style={styles.historyItemHeader}>
-                  <View style={styles.historyItemInfo}>
-                    <Text style={[styles.historyWeight, { color: theme.interactive.primary }]}>
-                      {tx.weight_kg.toFixed(1)} kg
-                    </Text>
-                    {batch && (
-                      <Text style={[styles.historySession, { color: theme.text.secondary }]}>
-                        Session: {batch.name}
+          <View style={styles.historyList}>
+            {weighingHistory.map((tx) => {
+              const batch = batches.get(tx.batch_id);
+              return (
+                <Card
+                  key={tx.tx_id}
+                  variant="outlined"
+                  onPress={() => router.push(`/transaction-detail?txId=${tx.tx_id}`)}
+                  style={styles.historyItem}
+                  testID={`history-item-${tx.tx_id}`}
+                >
+                  <View style={styles.historyItemContent}>
+                    <View style={styles.historyItemHeader}>
+                      <View style={styles.historyItemInfo}>
+                        <Text style={[TEXT_STYLES.h4, { color: theme.interactive.primary }]}>
+                          {tx.weight_kg.toFixed(1)} kg
+                        </Text>
+                        {batch && (
+                          <Text style={[TEXT_STYLES.bodySmall, { color: theme.text.secondary, marginTop: SPACING[1] }]}>
+                            Session: {batch.name}
+                          </Text>
+                        )}
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color={theme.text.tertiary} />
+                    </View>
+                    <View style={styles.historyItemFooter}>
+                      <Text style={[TEXT_STYLES.caption, { color: theme.text.tertiary }]}>
+                        {formatDate(tx.timestamp)}
                       </Text>
-                    )}
+                      <Text style={[TEXT_STYLES.caption, { color: theme.text.tertiary, textTransform: 'capitalize' }]}>
+                        {tx.reason}
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[styles.historyDate, { color: theme.text.tertiary }]}>
-                    {formatDate(tx.timestamp)}
-                  </Text>
-                </View>
-                <Text style={[styles.historyReason, { color: theme.text.tertiary }]}>
-                  {tx.reason}
-                </Text>
-              </View>
-            );
-          })
+                </Card>
+              );
+            })}
+          </View>
         )}
-      </View>
+      </DetailCard>
     </ScrollView>
   );
 }
@@ -190,66 +226,30 @@ const styles = StyleSheet.create({
     paddingTop: SPACING[12],
     paddingBottom: SPACING[24],
   },
-  header: {
-    marginBottom: SPACING[6],
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: SPACING[1],
-  },
-  subtitle: {
-    fontSize: 16,
-  },
-  section: {
-    marginBottom: SPACING[6],
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: SPACING[3],
-  },
-  emptyHistory: {
-    padding: SPACING[4],
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
-  },
-  emptyHistoryText: {
-    fontSize: 14,
-    textAlign: 'center',
+  historyList: {
+    gap: SPACING[2],
+    marginTop: SPACING[2],
   },
   historyItem: {
-    padding: SPACING[3],
-    borderRadius: BORDER_RADIUS.md,
     marginBottom: SPACING[2],
-    borderWidth: 1,
-    borderColor: 'transparent',
+  },
+  historyItemContent: {
+    gap: SPACING[2],
   },
   historyItemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: SPACING[1],
   },
   historyItemInfo: {
     flex: 1,
   },
-  historyWeight: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: SPACING[1],
-  },
-  historySession: {
-    fontSize: 14,
-  },
-  historyDate: {
-    fontSize: 12,
-  },
-  historyReason: {
-    fontSize: 12,
-    textTransform: 'capitalize',
-    marginTop: SPACING[1],
+  historyItemFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: SPACING[2],
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
   },
 });
-
-

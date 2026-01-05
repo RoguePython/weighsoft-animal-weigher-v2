@@ -35,6 +35,15 @@
 ### Design
 - **[theme-colors.md](design/theme-colors.md)** - Business professional theme with WCAG AA compliance
 
+### Component Library
+- **[COMPONENT_LIBRARY_REFERENCE.md](COMPONENT_LIBRARY_REFERENCE.md)** - Complete reference for all UI components
+- **[COMPONENT-LIBRARY.md](setup/COMPONENT-LIBRARY.md)** - Component build order and specifications
+
+### UX Redesign
+- **[UX_REDESIGN_PLAN.md](UX_REDESIGN_PLAN.md)** - Complete redesign plan and implementation status
+- **[FINAL_VERIFICATION_REPORT.md](FINAL_VERIFICATION_REPORT.md)** - Final testing and verification results
+- **[CONSISTENCY_PASS_REPORT.md](CONSISTENCY_PASS_REPORT.md)** - Design system consistency verification
+
 ---
 
 ## 📖 Documentation by Role
@@ -49,16 +58,19 @@
 1. [START-HERE.md](START-HERE.md) - Build roadmap and checklist
 2. [DEVELOPMENT-SETUP.md](setup/DEVELOPMENT-SETUP.md) - Environment setup guide
 3. [data-model.md](architecture/data-model.md) - Complete database schema
-4. [COMPONENT-LIBRARY.md](setup/COMPONENT-LIBRARY.md) - Component build order
-5. `.cursor/rules/*.mdc` - 33 comprehensive coding rules
+4. [COMPONENT_LIBRARY_REFERENCE.md](COMPONENT_LIBRARY_REFERENCE.md) - Complete component reference
+5. [COMPONENT-LIBRARY.md](setup/COMPONENT-LIBRARY.md) - Component build order
+6. `.cursor/rules/*.mdc` - 33 comprehensive coding rules
 
 ### For UX Designers
 1. [START-HERE.md](START-HERE.md) - Decision points for UI/UX
 2. [PROJECT-BRIEF.md](PROJECT-BRIEF.md) - Core use cases and flows
-3. [theme-colors.md](design/theme-colors.md) - Color system and design tokens
-4. [COMPONENT-LIBRARY.md](setup/COMPONENT-LIBRARY.md) - Component specifications
-5. `.cursor/rules/25-theming-design-system.mdc` - Complete design system
-6. `.cursor/rules/32-ui-component-patterns.mdc` - Searchable dropdowns & quick add
+3. [UX_REDESIGN_PLAN.md](UX_REDESIGN_PLAN.md) - Complete redesign plan and status
+4. [COMPONENT_LIBRARY_REFERENCE.md](COMPONENT_LIBRARY_REFERENCE.md) - Complete component reference
+5. [theme-colors.md](design/theme-colors.md) - Color system and design tokens
+6. [COMPONENT-LIBRARY.md](setup/COMPONENT-LIBRARY.md) - Component specifications
+7. `.cursor/rules/25-theming-design-system.mdc` - Complete design system
+8. `.cursor/rules/32-ui-component-patterns.mdc` - Searchable dropdowns & quick add
 
 ### For QA/Testers
 1. [START-HERE.md](START-HERE.md) - Success metrics and testing checklist

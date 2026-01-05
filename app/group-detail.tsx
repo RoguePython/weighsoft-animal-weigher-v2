@@ -9,7 +9,9 @@ import { Entity } from '@/domain/entities/entity';
 import { container } from '@/infrastructure/di/container';
 import { useTheme } from '@/infrastructure/theme/theme-context';
 import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { TEXT_STYLES } from '@/shared/constants/typography';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { EmptyState } from '@/presentation/components/ui';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -174,17 +176,24 @@ export default function GroupDetailScreen() {
       )}
 
       {animals.length === 0 ? (
-        <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
-          <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-            No animals in this group yet. Add animals to get started.
-          </Text>
-        </View>
+        <EmptyState
+          icon="paw-outline"
+          message="No animals in this group"
+          description="Add animals to this group to organize them together. Groups help you manage animals by pen, lot, breed, or any other classification."
+          action={{
+            label: 'Add Animals to Group',
+            onPress: handleAddAnimals,
+            testID: 'empty-state-add-animals-button',
+          }}
+          testID="no-animals-empty-state"
+        />
       ) : filteredAnimals.length === 0 ? (
-        <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
-          <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-            No animals match your search.
-          </Text>
-        </View>
+        <EmptyState
+          icon="search-outline"
+          message="No animals match your search"
+          description="Try adjusting your search terms to find the animals you're looking for."
+          testID="no-search-results-empty-state"
+        />
       ) : (
         <FlatList
           data={filteredAnimals}
@@ -321,18 +330,6 @@ const styles = StyleSheet.create({
   removeButtonText: {
     fontSize: 14,
     fontWeight: '600',
-  },
-  emptyState: {
-    flex: 1,
-    padding: SPACING[6],
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    margin: SPACING[4],
-  },
-  emptyStateText: {
-    fontSize: 16,
-    textAlign: 'center',
   },
 });
 

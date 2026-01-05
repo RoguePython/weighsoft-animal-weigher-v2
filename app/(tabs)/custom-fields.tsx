@@ -8,7 +8,9 @@ import { CustomFieldList } from '@/domain/entities/custom-field-list';
 import { container } from '@/infrastructure/di/container';
 import { useTheme } from '@/infrastructure/theme/theme-context';
 import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { TEXT_STYLES } from '@/shared/constants/typography';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { EmptyState } from '@/presentation/components/ui';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -105,11 +107,17 @@ export default function CustomFieldsScreen() {
       </TouchableOpacity>
 
       {cfls.length === 0 ? (
-        <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
-          <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-            No custom field lists yet. Create your first one to get started.
-          </Text>
-        </View>
+        <EmptyState
+          icon="list-outline"
+          message="No custom field lists yet"
+          description="Create your first custom field list to capture additional information during weighing. Custom fields help you track specific data like feed type, health notes, or location."
+          action={{
+            label: 'Create Your First Custom Field List',
+            onPress: () => router.push('/custom-field-list-setup'),
+            testID: 'empty-state-create-cfl-button',
+          }}
+          testID="cfls-empty-state"
+        />
       ) : (
         <View style={styles.cflsList}>
           {cfls.map((cfl) => (
@@ -254,15 +262,6 @@ const styles = StyleSheet.create({
   editButtonText: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  emptyState: {
-    padding: SPACING[6],
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    fontSize: 16,
-    textAlign: 'center',
   },
 });
 

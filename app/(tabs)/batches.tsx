@@ -9,7 +9,9 @@ import { AnimalGroup } from '@/domain/entities/animal-group';
 import { container } from '@/infrastructure/di/container';
 import { useTheme } from '@/infrastructure/theme/theme-context';
 import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { TEXT_STYLES } from '@/shared/constants/typography';
 import { generateUUID } from '@/shared/utils/uuid';
+import { EmptyState } from '@/presentation/components/ui';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
@@ -186,11 +188,17 @@ export default function BatchesScreen() {
           </TouchableOpacity>
 
           {groups.length === 0 ? (
-            <View style={[styles.emptyState, { backgroundColor: theme.background.secondary }]}>
-              <Text style={[styles.emptyStateText, { color: theme.text.secondary }]}>
-                No groups yet. Create your first group to organize animals.
-              </Text>
-            </View>
+            <EmptyState
+              icon="layers-outline"
+              message="No groups yet"
+              description="Create your first group to organize animals. Groups help you categorize animals by pen, lot, breed, or any other classification."
+              action={{
+                label: 'Create Your First Group',
+                onPress: () => setShowCreateForm(true),
+                testID: 'empty-state-create-group-button',
+              }}
+              testID="groups-empty-state"
+            />
           ) : (
             <View style={styles.groupsList}>
               {groups.map((group) => {
@@ -446,15 +454,6 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
-  },
-  emptyState: {
-    padding: SPACING[6],
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    fontSize: 16,
-    textAlign: 'center',
   },
   formActions: {
     flexDirection: 'row',

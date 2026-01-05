@@ -5,6 +5,8 @@ import { Image, StyleSheet } from 'react-native';
 import { HapticTab } from '@/components/haptic-tab';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { BORDER_RADIUS, SPACING } from '@/shared/constants/spacing';
+import { TEXT_STYLES } from '@/shared/constants/typography';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -18,28 +20,27 @@ export default function TabLayout() {
         tabBarButton: HapticTab,
         tabBarStyle: {
           backgroundColor: Colors[colorScheme ?? 'light'].background,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
+          borderTopLeftRadius: SPACING[6], // 24pt
+          borderTopRightRadius: SPACING[6], // 24pt
           position: 'absolute',
-          left: 16,
-          right: 16,
-          bottom: 16,
-          height: 64,
-          paddingBottom: 8,
-          paddingTop: 8,
+          left: SPACING[4], // 16pt
+          right: SPACING[4], // 16pt
+          bottom: SPACING[4], // 16pt
+          height: SPACING[16], // 64pt
+          paddingBottom: SPACING[2], // 8pt
+          paddingTop: SPACING[2], // 8pt
           shadowColor: '#000000',
           shadowOpacity: 0.15,
           shadowOffset: { width: 0, height: -2 },
-          shadowRadius: 8,
+          shadowRadius: SPACING[2], // 8pt
           elevation: 8,
         },
         tabBarItemStyle: {
-          borderRadius: 16,
-          marginHorizontal: 4,
+          borderRadius: SPACING[4], // 16pt
+          marginHorizontal: SPACING[1], // 4pt
         },
         tabBarLabelStyle: {
-          fontWeight: '600',
-          fontSize: 12,
+          ...TEXT_STYLES.caption,
         },
       }}>
       <Tabs.Screen
@@ -101,7 +102,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="weighing"
+        name="weigh"
         options={{
           title: 'Weigh',
           tabBarIcon: ({ focused }) => (
@@ -132,7 +133,7 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabIcon: {
-    width: 32,
-    height: 32,
+    width: SPACING[8], // 32pt
+    height: SPACING[8], // 32pt
   },
 });
