@@ -6,14 +6,15 @@ import { ActivityIndicator, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { ThemeProvider as AppThemeProvider } from '@/infrastructure/theme/theme-context';
+import { ThemeProvider as AppThemeProvider, useTheme } from '@/infrastructure/theme/theme-context';
 import { container } from '@/infrastructure/di/container';
 
 export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-export default function RootLayout() {
+function RootLayoutContent() {
+  const { isDark } = useTheme();
   const colorScheme = useColorScheme();
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -38,18 +39,27 @@ export default function RootLayout() {
     );
   }
 
+  // Use app theme for React Navigation theme
+  const navigationTheme = isDark ? DarkTheme : DefaultTheme;
+
+  return (
+    <ThemeProvider value={navigationTheme}>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="entity-setup" options={{ presentation: 'modal', title: 'Animal' }} />
+        <Stack.Screen name="add-batch-animals" options={{ presentation: 'modal', title: 'Add Animals' }} />
+        <Stack.Screen name="custom-field-list-setup" options={{ presentation: 'modal', title: 'Custom Fields' }} />
+        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+      </Stack>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+    </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
   return (
     <AppThemeProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="entity-setup" options={{ presentation: 'modal', title: 'Animal' }} />
-          <Stack.Screen name="add-batch-animals" options={{ presentation: 'modal', title: 'Add Animals' }} />
-          <Stack.Screen name="custom-field-list-setup" options={{ presentation: 'modal', title: 'Custom Fields' }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
+      <RootLayoutContent />
     </AppThemeProvider>
   );
 }

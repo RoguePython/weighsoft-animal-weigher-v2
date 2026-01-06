@@ -40,6 +40,14 @@ export default function AnimalsScreen() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      // Ensure container is initialized
+      try {
+        container.database; // This will throw if not initialized
+      } catch (error) {
+        console.error('Container not initialized:', error);
+        Alert.alert('Error', 'Database not ready. Please restart the app.');
+        return;
+      }
       const entityRepo = container.entityRepository;
       const batchRepo = container.batchRepository;
 

@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as XLSX from 'xlsx';
 
@@ -50,6 +50,14 @@ export default function WeighingHistoryScreen() {
   const loadHistory = useCallback(async () => {
     try {
       setLoading(true);
+      // Ensure container is initialized
+      try {
+        container.database; // This will throw if not initialized
+      } catch (error) {
+        console.error('Container not initialized:', error);
+        Alert.alert('Error', 'Database not ready. Please restart the app.');
+        return;
+      }
       const transactionRepo = container.transactionRepository;
       const entityRepo = container.entityRepository;
       const batchRepo = container.batchRepository;

@@ -2,10 +2,14 @@
  * Theme Context Provider
  * 
  * Provides theme (light/dark) to all components.
+ * Persists theme preference using AsyncStorage.
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const THEME_STORAGE_KEY = '@weighsoft_theme_mode';
 
 export interface Theme {
   mode: 'light' | 'dark';
@@ -163,6 +167,7 @@ const darkTheme: Theme = {
 interface ThemeContextValue {
   theme: Theme;
   isDark: boolean;
+  themeMode: 'light' | 'dark' | 'system';
   toggleTheme: () => void;
   setTheme: (mode: 'light' | 'dark' | 'system') => void;
 }
@@ -172,20 +177,57 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const systemColorScheme = useColorScheme();
   const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('system');
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Load saved theme preference on mount
+  useEffect(() => {
+    const loadThemePreference = async () => {
+      try {
+        const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+        if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system')) {
+          setThemeMode(savedTheme as 'light' | 'dark' | 'system');
+        }
+      } catch (error) {
+        console.error('Failed to load theme preference:', error);
+      } finally {
+        setIsInitialized(true);
+      }
+    };
+    loadThemePreference();
+  }, []);
 
   const isDark = themeMode === 'system' ? systemColorScheme === 'dark' : themeMode === 'dark';
   const theme = isDark ? darkTheme : lightTheme;
 
   const toggleTheme = () => {
-    setThemeMode((current) => (current === 'dark' ? 'light' : 'dark'));
+    const newMode = themeMode === 'dark' ? 'light' : 'dark';
+    setThemeMode(newMode);
+    // Persist preference
+    AsyncStorage.setItem(THEME_STORAGE_KEY, newMode).catch((error) => {
+      console.error('Failed to save theme preference:', error);
+    });
+  };
+
+  const setTheme = (mode: 'light' | 'dark' | 'system') => {
+    setThemeMode(mode);
+    // Persist preference
+    AsyncStorage.setItem(THEME_STORAGE_KEY, mode).catch((error) => {
+      console.error('Failed to save theme preference:', error);
+    });
   };
 
   const value = {
     theme,
     isDark,
+    themeMode,
     toggleTheme,
-    setTheme: setThemeMode,
+    setTheme,
   };
+
+  // Don't render until theme preference is loaded to avoid flash
+  if (!isInitialized) {
+    return null;
+  }
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };

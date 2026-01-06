@@ -1,6 +1,5 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { HapticTab } from '@/components/haptic-tab';
@@ -62,11 +61,11 @@ export default function TabLayout() {
         name="weigh"
         options={{
           title: 'Weigh',
-          tabBarIcon: ({ focused }) => (
-            <Image
-              source={require('@/assets/images/weighing-icon.png')}
-              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
-              resizeMode="contain"
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'scale' : 'scale-outline'}
+              size={24}
+              color={color}
             />
           ),
         }}
@@ -75,11 +74,11 @@ export default function TabLayout() {
         name="animals"
         options={{
           title: 'Animals',
-          tabBarIcon: ({ focused }) => (
-            <Image
-              source={require('@/assets/images/animals-icon.png')}
-              style={[styles.tabIcon, { opacity: focused ? 1 : 0.6 }]}
-              resizeMode="contain"
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'paw' : 'paw-outline'}
+              size={24}
+              color={color}
             />
           ),
         }}
@@ -127,9 +126,3 @@ export default function TabLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  tabIcon: {
-    width: SPACING[8], // 32pt
-    height: SPACING[8], // 32pt
-  },
-});
