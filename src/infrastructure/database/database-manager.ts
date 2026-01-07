@@ -12,81 +12,193 @@ const DATABASE_VERSION = 1;
 
 export class DatabaseManager {
   private static instance: DatabaseManager | null = null;
+  private static initializationPromise: Promise<DatabaseManager> | null = null;
   private db: SQLite.SQLiteDatabase | null = null;
+  private _isInitialized = false;
+  private _initializationError: Error | null = null;
 
   private constructor() {}
 
   static async create(): Promise<DatabaseManager> {
-    if (!DatabaseManager.instance) {
-      DatabaseManager.instance = new DatabaseManager();
-      await DatabaseManager.instance.initialize();
+    // If already initialized, return immediately
+    if (DatabaseManager.instance && DatabaseManager.instance._isInitialized) {
+      return DatabaseManager.instance;
     }
-    return DatabaseManager.instance;
+
+    // If initialization is in progress, wait for it
+    if (DatabaseManager.initializationPromise) {
+      return DatabaseManager.initializationPromise;
+    }
+
+    // Start new initialization
+    DatabaseManager.initializationPromise = (async () => {
+      if (!DatabaseManager.instance) {
+        DatabaseManager.instance = new DatabaseManager();
+      }
+      await DatabaseManager.instance.initialize();
+      return DatabaseManager.instance;
+    })();
+
+    try {
+      const instance = await DatabaseManager.initializationPromise;
+      DatabaseManager.initializationPromise = null; // Clear promise after success
+      return instance;
+    } catch (error) {
+      DatabaseManager.initializationPromise = null; // Clear promise on error
+      throw error;
+    }
   }
 
   private async initialize(): Promise<void> {
-    this.db = await SQLite.openDatabaseAsync(DATABASE_NAME);
-    await this.runMigrations();
-    if (this.db) {
-      await seedDefaultData(this.db);
+    if (this._isInitialized) {
+      return;
+    }
+
+    try {
+      // Open database with retry logic
+      this.db = await this.openDatabaseWithRetry();
+      
+      // Verify database is actually usable
+      await this.verifyDatabase();
+      
+      // Run migrations with transaction safety
+      await this.runMigrations();
+      
+      // Seed default data
+      if (this.db) {
+        await seedDefaultData(this.db);
+      }
+      
+      this._isInitialized = true;
+      this._initializationError = null;
+    } catch (error) {
+      this._isInitialized = false;
+      this._initializationError = error instanceof Error ? error : new Error(String(error));
+      this.db = null;
+      throw this._initializationError;
     }
   }
 
-  get database(): SQLite.SQLiteDatabase {
+  private async openDatabaseWithRetry(maxRetries = 3, delayMs = 100): Promise<SQLite.SQLiteDatabase> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
+        return db;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt < maxRetries) {
+          // Wait before retry with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
+        }
+      }
+    }
+    
+    throw new Error(`Failed to open database after ${maxRetries} attempts: ${lastError?.message}`);
+  }
+
+  private async verifyDatabase(): Promise<void> {
     if (!this.db) {
+      throw new Error('Database connection is null');
+    }
+
+    try {
+      // Test database with a simple query
+      await this.db.execAsync('SELECT 1');
+      
+      // Verify we can read from schema_migrations (or create it)
+      await this.db.execAsync(`
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+          version INTEGER PRIMARY KEY,
+          applied_at TEXT NOT NULL
+        );
+      `);
+    } catch (error) {
+      throw new Error(`Database verification failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  get isInitialized(): boolean {
+    return this._isInitialized && this.db !== null;
+  }
+
+  get initializationError(): Error | null {
+    return this._initializationError;
+  }
+
+  get database(): SQLite.SQLiteDatabase {
+    if (!this._isInitialized) {
+      if (this._initializationError) {
+        throw new Error(`Database initialization failed: ${this._initializationError.message}`);
+      }
       throw new Error('Database not initialized. Call create() first.');
+    }
+    if (!this.db) {
+      throw new Error('Database connection is null after initialization.');
     }
     return this.db;
   }
 
   private async runMigrations(): Promise<void> {
-    if (!this.db) return;
-
-    // Create migrations table
-    await this.db.execAsync(`
-      CREATE TABLE IF NOT EXISTS schema_migrations (
-        version INTEGER PRIMARY KEY,
-        applied_at TEXT NOT NULL
-      );
-    `);
-
-    // Get current version
-    const result = await this.db.getFirstAsync<{ version: number }>(
-      'SELECT MAX(version) as version FROM schema_migrations'
-    );
-    const currentVersion = result?.version || 0;
-
-    // Run migrations
-    if (currentVersion < 1) {
-      await this.runMigration001();
-      await this.db.runAsync(
-        'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
-        [1, new Date().toISOString()]
-      );
+    if (!this.db) {
+      throw new Error('Database connection is null during migrations');
     }
 
-    if (currentVersion < 2) {
-      await this.runMigration002();
-      await this.db.runAsync(
-        'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
-        [2, new Date().toISOString()]
-      );
-    }
+    try {
+      // Create migrations table
+      await this.db.execAsync(`
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+          version INTEGER PRIMARY KEY,
+          applied_at TEXT NOT NULL
+        );
+      `);
 
-    if (currentVersion < 3) {
-      await this.runMigration003();
-      await this.db.runAsync(
-        'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
-        [3, new Date().toISOString()]
+      // Get current version
+      const result = await this.db.getFirstAsync<{ version: number }>(
+        'SELECT MAX(version) as version FROM schema_migrations'
       );
+      const currentVersion = result?.version || 0;
+
+      // Run migrations in a transaction for safety
+      await this.db.withTransactionAsync(async () => {
+        if (currentVersion < 1) {
+          await this.runMigration001();
+          await this.db!.runAsync(
+            'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+            [1, new Date().toISOString()]
+          );
+        }
+
+        if (currentVersion < 2) {
+          await this.runMigration002();
+          await this.db!.runAsync(
+            'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+            [2, new Date().toISOString()]
+          );
+        }
+
+        if (currentVersion < 3) {
+          await this.runMigration003();
+          await this.db!.runAsync(
+            'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+            [3, new Date().toISOString()]
+          );
+        }
+      });
+    } catch (error) {
+      throw new Error(`Migration failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   private async runMigration001(): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) {
+      throw new Error('Database connection is null during migration 001');
+    }
 
-    // Create all tables
-    await this.db.execAsync(`
+    try {
+      // Create all tables
+      await this.db.execAsync(`
       -- Tenants
       CREATE TABLE IF NOT EXISTS tenants (
         tenant_id TEXT PRIMARY KEY,
@@ -211,13 +323,19 @@ export class DatabaseManager {
       
       CREATE INDEX IF NOT EXISTS idx_cfl_tenant ON custom_field_lists(tenant_id, name);
     `);
+    } catch (error) {
+      throw new Error(`Migration 001 failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async runMigration002(): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) {
+      throw new Error('Database connection is null during migration 002');
+    }
 
-    // Create growth_metrics view
-    await this.db.execAsync(`
+    try {
+      // Create growth_metrics view
+      await this.db.execAsync(`
       CREATE VIEW IF NOT EXISTS growth_metrics AS
       SELECT
         t.tx_id,
@@ -230,13 +348,19 @@ export class DatabaseManager {
         CAST((julianday(t.timestamp) - julianday(LAG(t.timestamp) OVER (PARTITION BY t.entity_id ORDER BY t.timestamp))) AS REAL) AS days_between
       FROM transactions t;
     `);
+    } catch (error) {
+      throw new Error(`Migration 002 failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async runMigration003(): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) {
+      throw new Error('Database connection is null during migration 003');
+    }
 
-    // Create animal_groups table
-    await this.db.execAsync(`
+    try {
+      // Create animal_groups table
+      await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS animal_groups (
         group_id TEXT PRIMARY KEY,
         tenant_id TEXT NOT NULL,
@@ -266,6 +390,9 @@ export class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_animal_group_members_group ON animal_group_members(group_id);
       CREATE INDEX IF NOT EXISTS idx_animal_group_members_entity ON animal_group_members(entity_id);
     `);
+    } catch (error) {
+      throw new Error(`Migration 003 failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   async close(): Promise<void> {

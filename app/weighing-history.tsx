@@ -51,10 +51,8 @@ export default function WeighingHistoryScreen() {
     try {
       setLoading(true);
       // Ensure container is initialized
-      try {
-        container.database; // This will throw if not initialized
-      } catch (error) {
-        console.error('Container not initialized:', error);
+      if (!container.isInitialized) {
+        console.error('Container not initialized');
         Alert.alert('Error', 'Database not ready. Please restart the app.');
         return;
       }
